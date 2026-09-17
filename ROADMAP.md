@@ -49,7 +49,7 @@ gantt
 | 3.1 | 3 | Threat model | [SECURITY.md](SECURITY.md) |
 | 3.2 | 3 | Provisioning tooling | [sim-tools/](sim-tools/TASKS.md) |
 | 3.3 | 3 | Identity federation & roaming (RFC-0003) | [stack/federation/TASKS.md](stack/federation/TASKS.md) |
-| 3.4 | 3 | PKI & secure updates | stack |
+| 3.4 | 3 | PKI & secure updates | [stack/federation/TASKS.md](stack/federation/TASKS.md) (3.4-a) |
 | 4.1 | 4 | Two-island exercise (partition drills) | [stack/federation/TASKS.md](stack/federation/TASKS.md) |
 | 4.2 | 4 | Delay-tolerant sync | stack/federation |
 | 4.3 | 4 | Island emergency service + upstream routes (NG112, PEMEA) — RFC-0004 | stack/services |
