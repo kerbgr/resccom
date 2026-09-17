@@ -1,0 +1,33 @@
+# Secrets — never commit real subscriber credentials or keys
+*.env
+!*.example.env
+secrets/
+*.key
+*.pem
+!*example*.pem
+sim_keys*
+subscribers.json
+!subscribers.example.json
+*.db.enc
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+
+# Runtime state
+*.log
+data/
+mongo-data/
+.DS_Store
+
+# Generated island.yaml instances (island.example.yaml is the checked-in
+# template island-init new --lab/--allocation writes over, not this)
+island-init/island.yaml
+
+# stack/federation/two-island.sh's own second checkout (3.3-b follow-up 1)
+# and run-state file (3.3-b follow-up 7)
+stack/federation/.two-island-b/
+stack/federation/.two-island-a-preexisting

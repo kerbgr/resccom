@@ -1,0 +1,41 @@
+{
+  "_comment": "Rendered from island.yaml by island-init render -- do not hand-edit.",
+  "island_id": "lab",
+  "sites": [
+    {
+      "id": "dev-host",
+      "name": "Developer workstation (virtual RAN rigs, no physical survey)",
+      "lat": null,
+      "lon": null,
+      "height_m": null,
+      "cells": [
+        {
+          "rat": "lte",
+          "band": "7",
+          "earfcn": 3350,
+          "arfcn": null,
+          "pci": 1,
+          "bandwidth_mhz": 5,
+          "tx_power_dbm": null,
+          "azimuth_deg": null,
+          "antenna_notes": "ZMQ virtual radio (gradiant/srsran-4g), no antenna — software loopback only, no RF radiated. See stack/ran/README.md.",
+          "predicted_coverage": null,
+          "measured_points": null
+        },
+        {
+          "rat": "nr",
+          "band": "n78",
+          "earfcn": null,
+          "arfcn": 620040,
+          "pci": 0,
+          "bandwidth_mhz": 40,
+          "tx_power_dbm": null,
+          "azimuth_deg": null,
+          "antenna_notes": "OAI gNB over rfsimulator, no antenna — software loopback only, no RF radiated. See stack/ran/README.md \"5G-alt rig\".",
+          "predicted_coverage": null,
+          "measured_points": null
+        }
+      ]
+    }
+  ]
+}

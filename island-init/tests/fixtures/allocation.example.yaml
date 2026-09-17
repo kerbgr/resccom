@@ -1,0 +1,16 @@
+# A registry allocation as RFC-0005 D2 would hand one out (no registry/
+# repo exists yet -- WBS 0.3 follow-up -- so this is the interim format
+# `island-init new --allocation` reads: just the fields island.yaml's own
+# `allocations` object needs). Test fixture data, not a real allocation.
+allocations:
+  plmn:
+    mcc: "999"
+    mnc: "70"
+  imsi_block: "9997000001"
+  tac_range: [100, 100]
+  ue_prefix:
+    v4: 100.70.0.0/16
+    v6_ula: "fd00:70::/48"
+  services_prefix: 100.71.0.0/24
+  realm: example-atoll.islands.arpa
+  dns_zone: example-atoll.islands.arpa

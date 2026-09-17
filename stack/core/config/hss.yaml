@@ -1,0 +1,20 @@
+################################################################################
+# ResCCOM 1.1-d — HSS (Home Subscriber Server, 4G EPC)
+# Derived from upstream open5gs/open5gs configs/open5gs/hss.yaml.in (v2.8.0).
+# db_uri points at the SAME "mongo" service/collection as UDR (1.1-a) — the
+# subscriber document `resccom-sim db sync` writes (3.2-b, superseding
+# 1.1-b's original load-subscribers.py) already has the legacy fields
+# (msisdn, mme_host, mm_realm, subscribed_rau_tau_timer, ...) HSS needs;
+# no separate 4G subscriber provisioning step exists.
+################################################################################
+db_uri: mongodb://mongo/open5gs
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/hss.log
+
+global:
+  max:
+    ue: 1024
+
+hss:
+  freeDiameter: /opt/open5gs/etc/freeDiameter/hss.conf

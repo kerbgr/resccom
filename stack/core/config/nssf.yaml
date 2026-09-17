@@ -1,0 +1,28 @@
+################################################################################
+# ResCCOM 1.1-a — NSSF (Network Slice Selection Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/nssf.yaml.in (v2.8.0).
+# Single default slice (SST 1) is all M1 needs.
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/nssf.log
+
+global:
+  max:
+    ue: 1024
+
+nssf:
+  sbi:
+    server:
+      # 3.3-c v2d: FQDN as the primary listener, default port 80 -- see
+      # ausf.yaml.j2's comment for the full reasoning (identical here;
+      # found live, keeping explicit 7777 broke SEPP's cross-island
+      # forwarding specifically).
+      - address: nssf.5gc.mnc001.mcc001.3gppnetwork.org
+    client:
+      nrf:
+        - uri: http://nrf.5gc.mnc001.mcc001.3gppnetwork.org
+      nsi:
+        - uri: http://nrf.5gc.mnc001.mcc001.3gppnetwork.org
+          s_nssai:
+            sst: 1

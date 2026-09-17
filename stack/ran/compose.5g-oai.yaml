@@ -1,0 +1,87 @@
+################################################################################
+# ResCCOM 1.2-a(5G-alt) — OpenAirInterface gNB + nrUE over the RF simulator,
+# against the real Open5GS 5GC.
+#
+# Follow-up to compose.5g.yaml's negative finding (see README.md "5G ZMQ
+# rig — negative finding" and TASKS.md): gradiant/srsran-5g cannot start in
+# ZMQ mode (upstream packaging bug) and no ZMQ-capable 5G SA UE exists among
+# this project's approved upstreams anyway. OAI is itself an approved
+# upstream alternative (RFC-0001 D1, docs/landscape.md) and ships both a
+# gNB and a UE that interoperate over its own software radio loopback
+# (`rfsimulator`) — the OAI equivalent of ZMQ virtual radio. Same emulation
+# caveat as every other rig here: rfsimulator does not radiate RF, no
+# license needed (see TASKS.md's legal warning for anything that DOES).
+#
+# Upstream, unmodified images (CLAUDE.md "Never fork upstreams"):
+#   - oaisoftwarealliance/oai-gnb, oaisoftwarealliance/oai-nr-ue — see
+#     README.md "Versions" for the pinned tag.
+#
+# Unlike compose.4g.yaml/compose.5g.yaml, no `platform: linux/amd64` pin:
+# OAI's images publish native linux/arm64 manifests as well as linux/amd64
+# (verified via `docker builds imagetools inspect` against the pinned tag —
+# see README.md "Versions"), so this rig runs unemulated on both Apple
+# Silicon dev hosts and amd64 deployment targets. Forcing amd64 here would
+# only make it slower for no portability gain.
+#
+# Config is two mounted YAML files (config/gnb.sa.rfsim.yaml,
+# config/nrue.uicc.yaml) — OAI's images take a config file, not the
+# env-var-templated-config pattern the gradiant images use. Both are
+# upstream's own CI reference config for band n78/106 PRB/rfsimulator with
+# only the PLMN, AMF address, gNB's own address, and UE subscriber/DNN
+# fields swapped for this project's core (see each file's header comment
+# for the exact diff from upstream).
+#
+# Joins stack/core's core_net (external), same as every other RAN rig:
+# gNB speaks NGAP to the AMF (10.10.0.5) and GTP-U to the UPF; gNB and UE
+# exchange PHY-layer samples over rfsimulator (TCP), gNB acting as server.
+# Static addresses for the same reason as the other rigs: the mounted
+# config files hardcode peer addresses before either container is
+# resolvable by name.
+#
+# Usage:  docker compose -f compose.5g-oai.yaml up -d   (core must be up first)
+# Verify: ./verify-5g-oai.sh
+################################################################################
+
+networks:
+  core_net:
+    external: true
+    name: core_core_net
+
+services:
+  gnb-oai:
+    image: oaisoftwarealliance/oai-gnb:2026.w37
+    environment:
+      USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
+    cap_add:
+      - SYS_NICE
+    volumes:
+      - ./config/gnb.sa.rfsim.yaml:/opt/oai-gnb/etc/gnb.yaml:ro
+    networks:
+      core_net:
+        ipv4_address: 10.10.0.80
+    restart: unless-stopped
+
+  nrue-oai:
+    image: oaisoftwarealliance/oai-nr-ue:2026.w37
+    # -r 106 --numerology 1: must match the gNB's dl_carrierBandwidth /
+    # dl_subcarrierSpacing (config/gnb.sa.rfsim.yaml). -C 3319680000: the
+    # rfsimulator UE does no real cell search sweep, so it needs the DL
+    # carrier center frequency handed to it directly — this is the
+    # frequency upstream's own absoluteFrequencySSB/dl_absoluteFrequencyPointA
+    # in the gNB config resolve to (3300.6 MHz + 53*12*30kHz = 3319.68 MHz),
+    # unchanged from upstream since the carrier plan wasn't touched.
+    environment:
+      USE_ADDITIONAL_OPTIONS: --rfsim -r 106 --numerology 1 -C 3319680000 --log_config.global_log_options level,nocolor,time
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./config/nrue.uicc.yaml:/opt/oai-nr-ue/etc/nr-ue.yaml:ro
+    networks:
+      core_net:
+        ipv4_address: 10.10.0.81
+    depends_on:
+      - gnb-oai
+    restart: unless-stopped

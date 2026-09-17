@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "island-init"
+version = "0.1.0"
+description = "island.yaml schema, validation, and rendering for ResCCOM (WBS 2.1)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "click==8.1.8",
+    "jsonschema==4.23.0",
+    "ruamel.yaml==0.18.6",
+    "jinja2==3.1.6",
+    "cryptography==50.0.1",
+]
+
+[project.scripts]
+island-init = "island_init.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["island_init"]
+include = ["island_init/schemas/*.json", "island_init/templates/**/*.j2"]

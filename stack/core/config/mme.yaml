@@ -1,0 +1,46 @@
+################################################################################
+# ResCCOM 1.1-d — MME (Mobility Management Entity, 4G EPC)
+# Derived from upstream open5gs/open5gs configs/open5gs/mme.yaml.in (v2.8.0).
+# PLMN 001/01, TAC 1 (rendered from island.yaml by
+# island-init render — do not hand-edit). Talks S6a (Diameter) to HSS,
+# GTP-C to SGW-C and directly to SMF (which also plays PGW-C).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/mme.log
+
+global:
+  max:
+    ue: 1024
+
+mme:
+  freeDiameter: /opt/open5gs/etc/freeDiameter/mme.conf
+  s1ap:
+    server:
+      - address: 10.10.0.30
+  gtpc:
+    server:
+      - address: 10.10.0.30
+    client:
+      sgwc:
+        - address: 10.10.0.31
+      smf:
+        - address: 10.10.0.4
+  gummei:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+      mme_gid: 2
+      mme_code: 1
+  tai:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+      tac: 1
+  security:
+    integrity_order: [ EIA2, EIA1, EIA0 ]
+    ciphering_order: [ EEA0, EEA1, EEA2 ]
+  network_name:
+    full: ResCCOM
+    short: Island
+  mme_name: resccom-mme0

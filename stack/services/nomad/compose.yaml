@@ -1,0 +1,125 @@
+################################################################################
+# ResCCOM 1.3-b — Project NOMAD (knowledge library), unmodified upstream.
+#
+# Upstream, unmodified images (see CLAUDE.md "Never fork upstreams"):
+#   - ghcr.io/crosstalk-solutions/project-nomad — see README.md "Versions"
+#   - mysql, redis — see README.md "Versions"
+#
+# This is upstream's own install/management_compose.yaml (Apache-2.0,
+# https://github.com/Crosstalk-Solutions/project-nomad), version-pinned and
+# adapted only where its own header invites customization ("you can
+# customize [ports, storage, etc.] as needed"):
+#   - Exact tags instead of `:latest` (CLAUDE.md: version-pin everything).
+#   - `platform: linux/amd64` — no arm64 manifest as of this writing, same
+#     situation as gradiant/open5gs (see ../../core/README.md).
+#   - `storage` moved under `./data/` (repo-relative, gitignored by the
+#     root .gitignore's blanket `data/` rule — nothing here can end up
+#     committed) instead of upstream's example `/opt/project-nomad/storage`.
+#   - This one MUST stay a real host bind mount, not a named Docker volume
+#     (tried that first — see git history if curious): the admin
+#     container inspects its own `/app/storage` mount to find the real
+#     host path, then bind-mounts that SAME host path into every child app
+#     container it spins up (Kiwix, etc.), so they all share one content
+#     tree. A named volume's mountpoint lives inside Docker Desktop's own
+#     VM, which isn't in Docker Desktop's host file-sharing allowlist —
+#     child container creation fails with "mounts denied". `mysql`/`redis`
+#     below have no such cross-container sharing requirement, so those
+#     stay named volumes, same as stack/core's `mongo-data` (1.1-e).
+#   - dozzle/updater/disk-collector omitted: all three are upstream-labeled
+#     optional conveniences (log viewer, in-UI self-update, host disk-usage
+#     display) we don't need for a pinned-tag lab deployment — updater in
+#     particular would let the admin silently drift off the pin above.
+#   - Secrets read from `.env` (gitignored; `nomad.example.env` is the
+#     checked-in template) instead of upstream's `replaceme` literals.
+#
+# Runs as its own compose project (`project-nomad`, matching upstream's own
+# `-p project-nomad` convention), deliberately separate from
+# ../compose.yaml: NOMAD's admin container manages its own child app
+# containers (Kiwix, etc.) directly via the Docker socket, hardcoding them
+# onto ITS OWN default network (`project-nomad_default`) — not something
+# this project can point at services_net without forking NOMAD's own
+# DockerService code. See README.md "How .island names reach NOMAD" for
+# how the two networks connect instead (a small proxy in ../compose.yaml,
+# our own glue — never NOMAD itself).
+################################################################################
+
+name: project-nomad
+
+services:
+  admin:
+    image: ghcr.io/crosstalk-solutions/project-nomad:v1.34.1
+    platform: linux/amd64
+    container_name: nomad_admin
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    volumes:
+      # NOMAD_DATA_DIR must be an absolute path (see the header comment
+      # above on why) — set once in .env, used identically here and in
+      # NOMAD_STORAGE_PATH below so there's exactly one place to change it.
+      - ${NOMAD_DATA_DIR}/storage:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - LOG_LEVEL=info
+      - APP_KEY=${APP_KEY}
+      - HOST=0.0.0.0
+      - URL=${URL}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=nomad
+      - DB_USER=nomad_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=nomad
+      - DB_SSL=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DISABLE_COMPRESSION=false
+      - NOMAD_STORAGE_PATH=${NOMAD_DATA_DIR}/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mysql:
+    image: mysql:8.0.43
+    container_name: nomad_mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=nomad
+      - MYSQL_USER=nomad_user
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - nomad-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  redis:
+    image: redis:7.4.5-alpine
+    container_name: nomad_redis
+    restart: unless-stopped
+    volumes:
+      - nomad-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nomad-storage:
+  nomad-mysql:
+  nomad-redis:

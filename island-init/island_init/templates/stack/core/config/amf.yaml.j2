@@ -1,0 +1,96 @@
+################################################################################
+# ResCCOM 1.1-a — AMF (Access and Mobility Management Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/amf.yaml.in (v2.8.0).
+# PLMN {{ mcc }}/{{ mnc }}, TAC {{ tac }} (rendered from island.yaml by
+# island-init render — do not hand-edit).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/amf.log
+{%- if log_level != "info" %}
+  level: {{ log_level }}
+{%- endif %}
+
+global:
+  max:
+    ue: 1024
+
+amf:
+  # 3.3-c v2d: ogs_sbi_fqdn_in_vplmn()/ogs_sbi_plmn_id_in_vplmn() return
+  # false whenever the calling NF has no `serving:` PLMN configured
+  # (lib/sbi/context.c:3050, :3114) -- AMF is the NF whose own SBI
+  # client (src/amf/sbi-path.c) calls these to decide whether an
+  # AUSF/UDM candidate is foreign and must go via SEPP, or local and can
+  # be dialed direct. Not present in upstream's own example (only its
+  # nrf.yaml.in has `serving:`), but needed here for that check to ever
+  # say "foreign" in the first place -- without it, AMF dials a foreign
+  # AUSF/UDM directly and the overlay's forward filter (correctly)
+  # blocks it.
+  serving:
+    - plmn_id:
+        mcc: {{ mcc }}
+        mnc: {{ mnc }}
+  sbi:
+    # 3.3-c v2d: AMF's own listener stays a plain core_net IP, matching
+    # upstream's own home-PLMN roaming example exactly (only NRF/AUSF/
+    # UDM/SMF/NSSF get FQDN listeners there -- AMF is never itself the
+    # *target* of a foreign PLMN's discovery in this flow).
+    server:
+      - address: {{ amf_ip }}
+        port: 7777
+    client:
+      nrf:
+        - uri: http://{{ nrf_fqdn }}
+  ngap:
+    server:
+      - address: {{ amf_ip }}
+  metrics:
+    server:
+      - address: {{ amf_ip }}
+        port: 9090
+  guami:
+    - plmn_id:
+        mcc: {{ mcc }}
+        mnc: {{ mnc }}
+      amf_id:
+        region: 2
+        set: 1
+  tai:
+    - plmn_id:
+        mcc: {{ mcc }}
+        mnc: {{ mnc }}
+      tac: {{ tac }}
+  plmn_support:
+    - plmn_id:
+        mcc: {{ mcc }}
+        mnc: {{ mnc }}
+      s_nssai:
+        - sst: 1
+{%- if peers %}
+  # 3.3-c v2: home-routed roaming (RFC-0003 D1 amendment) needs this
+  # island's AMF to accept a registration whose SUCI/SUPI carries a
+  # peer's PLMN, not just its own -- upstream's own roaming examples
+  # (configs/examples/5gc-no-scp-sepp*.yaml.in) list every PLMN in the
+  # roaming set here, own included. Rendered only when a peer is
+  # allow-listed (golden rule: an unpeered island's amf.yaml is
+  # unchanged).
+  access_control:
+    - plmn_id:
+        mcc: {{ mcc }}
+        mnc: {{ mnc }}
+{%- for p in peers %}
+    - plmn_id:
+        mcc: {{ p.plmn.mcc }}
+        mnc: {{ p.plmn.mnc }}
+{%- endfor %}
+{%- endif %}
+  security:
+    integrity_order: [ NIA2, NIA1, NIA0 ]
+    ciphering_order: [ NEA0, NEA1, NEA2 ]
+  network_name:
+    full: ResCCOM
+    short: Island
+  amf_name: resccom-amf0
+  time:
+    t3512:
+      value: 540

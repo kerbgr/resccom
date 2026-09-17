@@ -1,0 +1,40 @@
+# ResCCOM 1.4-a — wan-edge's uplink model.
+# Rendered from island.yaml by island-init render — do not hand-edit.
+#
+# Priority order = list order (first entry is most preferred), matching
+# TASKS.md's "fixed > satellite > PtP" default. Adding a fourth uplink
+# (or reordering these three) is a config-only change — wand.py itself
+# has no hardcoded uplink count or names, per the task's "any number of
+# uplink interfaces" requirement.
+#
+# Each entry names one Docker network wan-edge is attached to
+# (../compose.yaml) standing in for one physical WAN NIC in a real
+# deployment (fixed-line modem, satellite CPE, inter-island PtP radio) —
+# see ../README.md "Why containers, not real interfaces". self_ip/gateway
+# must match that network's ipam block in ../compose.yaml exactly:
+# wand.py uses self_ip only to discover which interface Docker gave that
+# network at runtime (interface *names* aren't something compose lets us
+# pin, and their ethN ordering isn't something worth depending on), and
+# gateway as the next hop for that uplink's own routing table.
+#
+# bandwidth_kbit (1.4-c) is what wand.py's QoS shaping treats as this
+# uplink's own constrained capacity — real satellite/PtP links usually
+# are this constrained in practice, so "fixed > satellite > ptp" carries
+# over into bandwidth too, not just failover priority. `fixed`'s value
+# (2000 = 2Mbit) is also TASKS.md 1.4-c's own acceptance-criterion
+# example ("e.g. 2 Mbit") — the lab profile's default constraint is that
+# example, not a separate value invented for the test to override; see
+# ../README.md "QoS: emergency traffic wins (1.4-c)".
+uplinks:
+  - name: fixed
+    self_ip: 10.90.1.2
+    gateway: 10.90.1.1
+    bandwidth_kbit: 2000
+  - name: satellite
+    self_ip: 10.90.2.2
+    gateway: 10.90.2.1
+    bandwidth_kbit: 1000
+  - name: ptp
+    self_ip: 10.90.3.2
+    gateway: 10.90.3.1
+    bandwidth_kbit: 500

@@ -1,0 +1,79 @@
+################################################################################
+# ResCCOM 1.2-a (5G half) — srsRAN Project gNB over the ZMQ virtual radio.
+#
+# [SIM] path only: the ZMQ device replaces the SDR entirely — no RF is
+# radiated anywhere, no license needed (see TASKS.md's legal warning for
+# anything that DOES radiate).
+#
+# Upstream, unmodified image (CLAUDE.md "Never fork upstreams"):
+#   - gradiant/srsran-5g — see README.md "Versions" for the pinned tag.
+#     Its entrypoint env-templates upstream srsRAN Project's own example
+#     config (configs/gnb_rf_b200_tdd_n78_20mhz.yml) and, with
+#     DEVICE_DRIVER=zmq / DEVICE_ARGS=default, rewrites the RF driver block
+#     to a ZMQ tx/rx pair keyed off GNB_ADDRESS/UE_ADDRESS.
+#
+# THIS RIG HAS NO UE. Read README.md "5G ZMQ rig — negative finding"
+# before assuming the missing UE service is an oversight: srsRAN Project
+# ships no UE application at all (upstream is CU/DU/gNB-only), and neither
+# public upstream this project is allowed to consume (srsRAN, UERANSIM) has
+# a ZMQ-capable 5G Standalone UE. This compose file exists to prove the one
+# real thing that *is* verifiable without one: the gNB reaching the AMF
+# over NGAP and completing NG Setup.
+#
+# Joins stack/core's core_net (external), same as the 4G/UERANSIM rigs.
+# Static address for the same reason as compose.4g.yaml: the entrypoint
+# bakes GNB_ADDRESS/UE_ADDRESS into the ZMQ device_args before the
+# container is resolvable by name.
+#
+# Usage:  docker compose -f compose.5g.yaml up -d   (core must be up first)
+# Verify: ./verify-5g.sh
+################################################################################
+
+networks:
+  core_net:
+    external: true
+    name: core_core_net
+
+services:
+  gnb5g:
+    image: gradiant/srsran-5g:24_10_1
+    platform: linux/amd64
+    command: ["gnb"]
+    environment:
+      DEVICE_DRIVER: zmq
+      # Triggers the entrypoint's own sed rewrite of device_args to a ZMQ
+      # tx/rx pair (tx_port bound on GNB_ADDRESS:2000, rx_port connected to
+      # UE_ADDRESS:2001) — same base_srate as the 4G rig's ZMQ pair.
+      DEVICE_ARGS: default
+      SRATE: "23.04"
+      # Peer by fixed address (no UE_HOSTNAME to resolve — there is no UE
+      # service; see the negative-finding note above). The rx_port ZMQ
+      # socket connects to this address but does not require a live peer
+      # at startup (ZMQ SUB semantics) — the gNB comes up and completes NG
+      # Setup with no UE ever attached.
+      GNB_ADDRESS: 10.10.0.70
+      UE_ADDRESS: 10.10.0.71
+      # Real AMF, real NGAP — same AMF the UERANSIM and (once it exists)
+      # any 5G ZMQ UE would attach to.
+      AMF_HOSTNAME: ""
+      AMF_ADDR: 10.10.0.5
+      AMF_BIND_ADDR: 10.10.0.70
+      # CLAUDE.md conventions: test PLMN 001/01, TAC 1 (must match
+      # stack/core/config/amf.yaml's tai list or NG Setup is rejected)
+      PLMN: "00101"
+      TAC: "1"
+      PCI: "1"
+      # Upstream's own example keeps band n78 / 20 MHz / 30 kHz SCS — the
+      # ZMQ rewrite only touches the RF driver block, not the cell config,
+      # and there is no phone or UE here to require a different band.
+      BAND: "78"
+      BANDWIDTH: "20"
+      SCS: "30"
+      DL_ARFCN: "632628"
+      OTW_FORMAT: sc12
+      TX_GAIN: "80"
+      RX_GAIN: "40"
+    networks:
+      core_net:
+        ipv4_address: 10.10.0.70
+    restart: unless-stopped

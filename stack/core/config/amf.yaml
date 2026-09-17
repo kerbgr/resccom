@@ -1,0 +1,75 @@
+################################################################################
+# ResCCOM 1.1-a — AMF (Access and Mobility Management Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/amf.yaml.in (v2.8.0).
+# PLMN 001/01, TAC 1 (rendered from island.yaml by
+# island-init render — do not hand-edit).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/amf.log
+
+global:
+  max:
+    ue: 1024
+
+amf:
+  # 3.3-c v2d: ogs_sbi_fqdn_in_vplmn()/ogs_sbi_plmn_id_in_vplmn() return
+  # false whenever the calling NF has no `serving:` PLMN configured
+  # (lib/sbi/context.c:3050, :3114) -- AMF is the NF whose own SBI
+  # client (src/amf/sbi-path.c) calls these to decide whether an
+  # AUSF/UDM candidate is foreign and must go via SEPP, or local and can
+  # be dialed direct. Not present in upstream's own example (only its
+  # nrf.yaml.in has `serving:`), but needed here for that check to ever
+  # say "foreign" in the first place -- without it, AMF dials a foreign
+  # AUSF/UDM directly and the overlay's forward filter (correctly)
+  # blocks it.
+  serving:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+  sbi:
+    # 3.3-c v2d: AMF's own listener stays a plain core_net IP, matching
+    # upstream's own home-PLMN roaming example exactly (only NRF/AUSF/
+    # UDM/SMF/NSSF get FQDN listeners there -- AMF is never itself the
+    # *target* of a foreign PLMN's discovery in this flow).
+    server:
+      - address: 10.10.0.5
+        port: 7777
+    client:
+      nrf:
+        - uri: http://nrf.5gc.mnc001.mcc001.3gppnetwork.org
+  ngap:
+    server:
+      - address: 10.10.0.5
+  metrics:
+    server:
+      - address: 10.10.0.5
+        port: 9090
+  guami:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+      amf_id:
+        region: 2
+        set: 1
+  tai:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+      tac: 1
+  plmn_support:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+      s_nssai:
+        - sst: 1
+  security:
+    integrity_order: [ NIA2, NIA1, NIA0 ]
+    ciphering_order: [ NEA0, NEA1, NEA2 ]
+  network_name:
+    full: ResCCOM
+    short: Island
+  amf_name: resccom-amf0
+  time:
+    t3512:
+      value: 540

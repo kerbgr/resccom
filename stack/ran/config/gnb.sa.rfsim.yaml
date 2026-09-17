@@ -1,0 +1,148 @@
+# ResCCOM 1.2-a(5G-alt) — OAI gNB over the RF simulator (rfsimulator).
+#
+# Derived from upstream OpenAirInterface's own CI reference config
+# (openairinterface5g ci-scripts/conf_files/gnb.sa.band78.106prb.rfsim.yaml,
+# `develop` branch) — band n78 / 106 PRB / 30 kHz SCS, unmodified except for
+# the four fields that must match *this* project's core instead of OAI's own
+# CI core: plmn_list (mcc/mnc), amf_ip_address, and
+# NETWORK_INTERFACES (gNB's own address on core_net). tracking_area_code
+# was already 1 in upstream's sample, matching stack/core/config/amf.yaml's
+# tai list unchanged.
+#
+# [SIM] path only: rfsimulator is a software loopback, no RF is radiated
+# anywhere, no license needed (see ../TASKS.md's legal warning for anything
+# that DOES radiate).
+Active_gNBs:
+ - gnb-rfsim
+Asn1_verbosity: none
+gNBs:
+  - gNB_ID: 0xe00
+    gNB_name: gnb-rfsim
+    # CLAUDE.md conventions: test PLMN 001/01, TAC 1 (matches
+    # stack/core/config/amf.yaml's tai list, or NG Setup is rejected)
+    tracking_area_code: 1
+    plmn_list:
+      - mcc: 1
+        mnc: 1
+        mnc_length: 2
+        snssaiList:
+          # Matches stack/core/config/amf.yaml's plmn_support s_nssai
+          # (sst 1, no sd) and sim-tools' DEFAULT_SST — sd: 0xffffff is
+          # OAI's encoding for "no slice differentiator", not a real value.
+          - sst: 1
+            sd: 0xffffff
+    nr_cellid: 12345678
+    min_rxtxtime: 6
+    servingCellConfigCommon:
+      - physCellId: 0
+        # Upstream's own band n78 / 106 PRB / 30 kHz SCS reference carrier
+        # plan, unchanged: this is independent of PLMN and needs no edit
+        # for a different core.
+        absoluteFrequencySSB: 621312
+        dl_absoluteFrequencyPointA: 620040
+        dl_offstToCarrier: 0
+        dl_subcarrierSpacing: 1
+        dl_carrierBandwidth: 106
+        initialDLBWPlocationAndBandwidth: 28875
+        initialDLBWPsubcarrierSpacing: 1
+        initialDLBWPcontrolResourceSetZero: 11
+        initialDLBWPsearchSpaceZero: 0
+        ul_frequencyBand: 78
+        ul_offstToCarrier: 0
+        ul_subcarrierSpacing: 1
+        ul_carrierBandwidth: 106
+        pMax: 20
+        initialULBWPlocationAndBandwidth: 28875
+        initialULBWPsubcarrierSpacing: 1
+        prach_ConfigurationIndex: 98
+        prach_msg1_FDM: 1
+        prach_msg1_FrequencyStart: 0
+        zeroCorrelationZoneConfig: 12
+        preambleReceivedTargetPower: -104
+        preambleTransMax: 6
+        powerRampingStep: 1
+        ssb_perRACH_OccasionAndCB_PreamblesPerSSB_PR: 4
+        ssb_perRACH_OccasionAndCB_PreamblesPerSSB: 15
+        ra_ContentionResolutionTimer: 7
+        rsrp_ThresholdSSB: 19
+        prach_RootSequenceIndex_PR: 2
+        prach_RootSequenceIndex: 1
+        msg1_SubcarrierSpacing: 1
+        restrictedSetConfig: 0
+        msg3_DeltaPreamble: 1
+        p0_NominalWithGrant: -90
+        pucchGroupHopping: 0
+        hoppingId: 40
+        p0_nominal: -90
+        ssb_PositionsInBurst_Bitmap: 2
+        ssb_periodicityServingCell: 2
+        dmrs_TypeA_Position: 0
+        subcarrierSpacing: 1
+        referenceSubcarrierSpacing: 1
+        dl_UL_TransmissionPeriodicity: 6
+        nrofDownlinkSlots: 7
+        nrofDownlinkSymbols: 6
+        nrofUplinkSlots: 2
+        nrofUplinkSymbols: 4
+        ssPBCH_BlockPower: -25
+    SCTP:
+      SCTP_INSTREAMS: 2
+      SCTP_OUTSTREAMS: 2
+
+    ##### AMF parameters: real Open5GS AMF, not OAI's own CI core.
+    amf_ip_address:
+      - ipv4: 10.10.0.5
+
+    NETWORK_INTERFACES:
+      # gNB's own fixed address on stack/core's core_net (external) — same
+      # static-address pattern as compose.4g.yaml/compose.5g.yaml, one
+      # block after the srsRAN 5G rig's 10.10.0.70/71.
+      GNB_IPV4_ADDRESS_FOR_NG_AMF: 10.10.0.80
+      GNB_IPV4_ADDRESS_FOR_NGU: 10.10.0.80
+      GNB_PORT_FOR_S1U: 2152
+
+MACRLCs:
+  - tr_s_preference: local_L1
+    tr_n_preference: local_RRC
+    pusch_TargetSNRx10: 200
+    pucch_TargetSNRx10: 200
+    stats_max_ue: 17
+
+L1s:
+  - tr_n_preference: local_mac
+    prach_dtx_threshold: 200
+
+RUs:
+  - local_rf: yes
+    nb_tx: 1
+    nb_rx: 1
+    att_tx: 0
+    att_rx: 0
+    bands: [78]
+    max_pdschReferenceSignalPower: -27
+    max_rxgain: 75
+    eNB_instances: [0]
+    sf_extension: 0
+    sdr_addrs: serial=XXXXXXX
+
+rfsimulator:
+  # This gNB is the rfsimulator server; the UE dials in (see
+  # config/nrue.uicc.yaml's rfsimulator.serveraddr: 10.10.0.80).
+  - serveraddr: server
+
+security:
+  ciphering_algorithms: [nea0]
+  integrity_algorithms: [nia2, nia0]
+  drb_ciphering: yes
+  drb_integrity: no
+
+log_config:
+  global_log_level: info
+  hw_log_level: info
+  phy_log_level: info
+  mac_log_level: info
+  rlc_log_level: info
+  pdcp_log_level: info
+  rrc_log_level: info
+  ngap_log_level: debug
+  f1ap_log_level: debug

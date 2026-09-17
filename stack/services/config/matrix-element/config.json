@@ -1,0 +1,16 @@
+{
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "http://chat.island",
+      "server_name": "chat.island"
+    }
+  },
+  "disable_custom_urls": true,
+  "disable_guests": true,
+  "disable_3pid_login": true,
+  "brand": "ResCCOM Chat",
+  "default_federate": false,
+  "default_theme": "light",
+  "show_labs_settings": false,
+  "features": {}
+}

@@ -1,0 +1,65 @@
+################################################################################
+# ResCCOM 1.3-c — Synapse (Matrix homeserver), unmodified upstream.
+# Non-secret half of the config — see secrets.example.yaml for the other
+# half (registration_shared_secret, macaroon_secret_key, form_secret, the
+# Postgres password) and README.md for why it's split this way, and for
+# what's deliberately NOT here (no federation listener at all — stronger
+# than just federation_domain_whitelist below).
+#
+# Loaded as `run -c homeserver.yaml -c secrets.yaml` (verified: Synapse
+# deep-merges multiple -c files at actual startup — see README.md
+# "Verification performed" for how that was confirmed live, since the
+# `synapse.config read` debug subcommand misleadingly suggests it doesn't).
+################################################################################
+
+server_name: "chat.island"
+report_stats: false
+pid_file: /data/homeserver.pid
+signing_key_path: "/data/chat.island.signing.key"
+log_config: "/data/chat.island.log.config"
+media_store_path: /data/media_store
+
+# Client API only — no federation resource on this listener, and no
+# second listener defined for one either. This is a stronger version of
+# "no federation" than federation_domain_whitelist below: there is no
+# federation endpoint for anything to reach in the first place, the same
+# "no path exists" posture stack/core's core_net takes with
+# `internal: true`.
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client]
+        compress: false
+
+# 1.3-c "federation config prepared but disabled": server_name is a
+# real, stable value (not "localhost") so turning federation on later
+# (Phase 4, RFC-0005's per-island identity) doesn't require
+# re-provisioning every user's identity — but nothing federates today.
+# Empty list is upstream's own documented way to deny federation with
+# every server (see docs/usage/configuration/config_documentation.md).
+# Belt-and-suspenders with the missing federation listener above.
+federation_domain_whitelist: []
+trusted_key_servers: []
+suppress_key_server_warning: true
+
+# 1.3-c "registration flow suitable for offline use (local registration,
+# no email verification)". Upstream's own docs call
+# enable_registration_without_verification "not recommended" as a public-
+# internet spam/abuse vector — accepted here because this homeserver is
+# never reachable from the WAN (services_net has no federation listener
+# published, and core_net/services_net routing never crosses to a WAN
+# path either); see SECURITY.md's threat model. A real multi-island
+# deployment may want registration_shared_secret-gated (admin-issued)
+# registration instead — an operator-policy decision for the playbook,
+# not something this task hardcodes.
+enable_registration: true
+enable_registration_without_verification: true
+
+# 1.3-c "E2EE default on" — SECURITY.md commits to "E2E-encrypted
+# messaging by default" as a property that must not silently regress.
+# "all" (not "invite"): every locally-created room, not just DM-style
+# presets, per upstream's own documented values for this key.
+encryption_enabled_by_default_for_room_type: all

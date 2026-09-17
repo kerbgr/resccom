@@ -1,0 +1,41 @@
+################################################################################
+# ResCCOM 3.3-c v2 — SEPP (Security Edge Protection Proxy)
+# Derived from upstream open5gs/open5gs configs/examples/5gc-no-scp-sepp*
+# -999-70.yaml.in / -001-01.yaml.in (v2.8.0) -- read first, not invented
+# (stack/federation/TASKS.md 3.3-c v2). No SCP: AMF talks to this
+# island's own NRF directly, same as every other NF here; SEPP is the
+# only NF that talks across islands, over N32.
+#
+# TLS identity: sepp2, one of the two bundled example
+# certs/keys the gradiant/open5gs image ships at a fixed path
+# (/opt/open5gs/etc/open5gs/tls/sepp2.{key,crt} + a shared
+# ca.crt) for exactly this upstream roaming example -- not a secret
+# (CLAUDE.md), reused unmodified the same way udm.yaml.j2 reuses the
+# image's bundled hnet keys. island_init/render.py's SEPP_CERT_BY_PLMN
+# picks it from this island's own PLMN and refuses to render for any
+# PLMN outside the pair the image actually ships certs for.
+#
+# N32 stays plain HTTP, matching the no-scp-sepp*.yaml.in example
+# exactly (its own n32.client.sepp[].uri is `http://`, even though a TLS
+# cert is configured under sepp.default -- found live: setting `scheme:
+# https` on n32 with an IP-address peer fails to start at all, "HTTPS
+# (TLS) must be set to FQDN", since scheme:https requires a real
+# hostname for SNI/cert-CN matching, and this lab has no DNS for that.
+# The 5gc-tls-sepp*.yaml.in variant is upstream's own FQDN+https path;
+# out of scope here, matching "no SCP unless the no-SCP variant proves
+# insufficient" -- same reasoning, next escalation only if needed.
+#
+# SBI, N32-c and N32-f share this island's one sepp_ip (every NF here
+# gets exactly one core_net address; not three separate addresses the
+# way upstream's own loopback-aliased example does it -- found live,
+# Docker refuses to bind a second/third address a compose service never
+# declared, "Cannot assign requested address") -- N32-c/N32-f are ports
+# 7778/7779 on it instead.
+#
+# Rendered from island.yaml by island-init render — do not hand-edit.
+################################################################################
+
+# No peers configured -- stack/core/compose.yaml doesn't render a sepp
+# service at all in this case (golden rule: an unpeered island is
+# byte-identical to before 3.3-c v2), so nothing ever reads this file.
+

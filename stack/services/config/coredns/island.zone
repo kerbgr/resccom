@@ -1,0 +1,17 @@
+; ResCCOM 1.3-a — authoritative zone for .island (CLAUDE.md: services
+; subnet 10.46.0.0/24, local-only DNS zone, never routed between islands).
+; Addresses reserved now so DNS is stable as each service lands (1.3-b..d);
+; nothing may be listening yet on some of these until its own task is done.
+; Rendered from island.yaml by island-init render — do not hand-edit.
+$ORIGIN island.
+$TTL 300
+@       IN SOA  ns.island. hostmaster.island. ( 2026091101 3600 600 604800 300 )
+@       IN NS   ns.island.
+ns      IN A    10.46.0.53
+portal  IN A    10.46.0.10
+library IN A    10.46.0.11
+learn   IN A    10.46.0.11
+maps    IN A    10.46.0.11
+chat    IN A    10.46.0.20
+talk    IN A    10.46.0.30
+console IN A    10.46.0.40

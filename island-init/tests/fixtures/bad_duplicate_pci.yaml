@@ -1,0 +1,175 @@
+# ResCCOM 2.1-a — island.yaml schema v0 example.
+#
+# This is the LAB PROFILE, and by the golden rule in TASKS.md it must
+# describe today's committed configs exactly — every value below is read
+# off a real file in this repo (cited per section), not invented. Where
+# today's stack genuinely has no value yet (no keypair, no site survey,
+# no coverage data), the field is null rather than a placeholder number.
+#
+# `island-init check island.example.yaml` validates this against
+# island_init/data/island.schema.v0.json plus the semantic rules in
+# island_init/checks.py.
+
+profile: lab
+
+island:
+  id: lab
+  display_name: ResCCOM Lab Island
+  # XA-XZ is the ISO 3166-1 user-assigned range; this profile runs on a
+  # developer's machine, not in any real country.
+  country: XX
+  # "dev" = a developer machine, not a node-hw/ Class A/B/C build (the
+  # node OS image, WBS 2.1, doesn't exist yet — see STATUS.md).
+  node_classes: [dev]
+  # No per-deployment keypair exists yet: `island-init new` (2.1-c) is
+  # what generates and signs this file, and it isn't built yet either.
+  signing_key_fingerprint: null
+  overlay:
+    endpoint: null
+    wireguard_public_key: null
+
+allocations:
+  # Test PLMN 001/01 (CLAUDE.md; RFC-0005 D2's registry-allocated PLMN is
+  # only for a real, federating island). See stack/core/config/amf.yaml,
+  # mme.yaml.
+  plmn:
+    mcc: "001"
+    mnc: "01"
+  # sim-tools/resccom_sim/model.py TEST_PLMN — the reserved 3GPP test
+  # vector block, not a registry allocation.
+  imsi_block: "00101"
+  # stack/core/config/{amf,mme}.yaml tai list: tac 1.
+  tac_range: [1, 1]
+  ue_prefix:
+    # stack/core/config/smf.yaml session.subnet (Open5GS default).
+    v4: 10.45.0.0/16
+    # No IPv6 in the lab stack today.
+    v6_ula: null
+  # stack/core/compose.yaml services_net ipam block.
+  services_prefix: 10.46.0.0/24
+  # stack/core/config/freeDiameter/{hss,mme,smf,pcrf}.conf Realm. Note
+  # this is a different string from dns_zone below in the lab profile
+  # today — RFC-0005 D2 expects these to converge into one per-island
+  # domain for a real deployment; they haven't been unified here.
+  realm: localdomain
+  # stack/services/config/coredns/island.zone $ORIGIN; also the suffix in
+  # matrix-synapse/homeserver.yaml's server_name ("chat.island"). Local-only,
+  # never routed between islands (CLAUDE.md).
+  dns_zone: island
+
+node:
+  internal_base: 10.10.0.0/16
+
+# No physical site survey exists (node-hw isn't built, WBS 2.1/2.2-2.4 are
+# still open per STATUS.md). The two RAN rigs that do exist today
+# (stack/ran/compose.4g.yaml, stack/ran/config/gnb.sa.rfsim.yaml) are
+# software loopbacks on the developer's own machine, not an installed
+# site, so lat/lon/height_m are null rather than an invented location.
+sites:
+  - id: dev-host
+    name: "Developer workstation (virtual RAN rigs, no physical survey)"
+    lat: null
+    lon: null
+    height_m: null
+    cells:
+      # stack/ran/compose.4g.yaml (gradiant/srsran-4g:23_11, ZMQ virtual
+      # radio). MCC/MNC/TAC are set by that compose file's env vars;
+      # pci and dl_earfcn are NOT overridden there and come from the
+      # image's own /etc/srsran/rr.conf cell_list (verified by extracting
+      # the image: pci = 1; dl_earfcn = 3350). EARFCN 3350 falls in
+      # E-UTRA band 7. N_PRB=25 (compose override) = 5 MHz.
+      - rat: lte
+        band: "7"
+        earfcn: 3350
+        arfcn: null
+        pci: 1
+        bandwidth_mhz: 5
+        # tx_gain=80 (image default, stack/ran/compose.4g.yaml doesn't
+        # override TX_GAIN) is a ZMQ software gain, not radiated power —
+        # no real transmit power to report (CLAUDE.md "don't invent
+        # results" for RF numbers).
+        tx_power_dbm: null
+        azimuth_deg: null
+        antenna_notes: >-
+          ZMQ virtual radio (gradiant/srsran-4g), no antenna — software
+          loopback only, no RF radiated. See stack/ran/README.md.
+        predicted_coverage: null
+        measured_points: null
+      # stack/ran/config/gnb.sa.rfsim.yaml (OAI gNB+nrUE over
+      # rfsimulator, band n78 / 106 PRB / 30 kHz SCS — STATUS.md's
+      # "1.2-a(5G-alt)" positive finding). arfcn is
+      # dl_absoluteFrequencyPointA (620040); the SSB is at
+      # absoluteFrequencySSB 621312. 106 PRB @ 30 kHz SCS = 40 MHz per
+      # 3GPP TS 38.101-1 Table 5.3.2-1.
+      - rat: nr
+        band: n78
+        earfcn: null
+        arfcn: 620040
+        pci: 1
+        bandwidth_mhz: 40
+        # rfsimulator is a software loopback (local_rf: yes, no SDR) —
+        # pMax: 20 in servingCellConfigCommon is the UE's configured max
+        # output power, not a gNB transmit power; no real value to report.
+        tx_power_dbm: null
+        azimuth_deg: null
+        antenna_notes: >-
+          OAI gNB over rfsimulator, no antenna — software loopback only,
+          no RF radiated. See stack/ran/README.md "5G-alt rig".
+        predicted_coverage: null
+        measured_points: null
+
+services:
+  enabled:
+    # stack/services/compose.yaml: dns, portal, nomad-gateway (library),
+    # matrix-* (chat), jitsi (talk) are all up (STATUS.md 1.3
+    # done-verified).
+    library: true
+    chat: true
+    talk: true
+    portal: true
+    # Island Console (2.1-d) not built yet.
+    console: false
+    # PEMEA AP interop (WBS 4.3) not built yet.
+    pemea_ap: false
+  # stack/services/config/portal/server.py hardcodes the same placeholder
+  # text directly in HTML today ("[local association name]" / the
+  # operator-contact paragraph) — nothing reads these from island.yaml
+  # yet (that wiring is island-init render, 2.1-b). SECURITY.md's
+  # lab-profile register already carries this row.
+  portal_association_name: null
+  portal_operator_contact: null
+
+backhaul:
+  # Mirrors stack/backhaul/config/uplinks.yaml exactly: list order is
+  # priority (1 = most preferred), values are that file's own
+  # bandwidth_kbit ("fixed > satellite > ptp").
+  uplinks:
+    - name: fixed
+      priority: 1
+      bandwidth_kbit: 2000
+    - name: satellite
+      priority: 2
+      bandwidth_kbit: 1000
+    - name: ptp
+      priority: 3
+      bandwidth_kbit: 500
+
+federation:
+  # Nothing federates yet: WBS 3.3 (identity federation) and 4.2
+  # (delay-tolerant sync) are open, and matrix-synapse/homeserver.yaml's
+  # federation config is prepared but explicitly disabled. All items
+  # default to not-shared per RFC-0006 D5.
+  items:
+    - name: content_library
+      share: false
+      priority_class: best_effort
+    - name: matrix_rooms
+      share: false
+      priority_class: best_effort
+    - name: incident_records
+      share: false
+      priority_class: best_effort
+    - name: coverage_polygon
+      share: false
+      priority_class: best_effort
+  peers: []

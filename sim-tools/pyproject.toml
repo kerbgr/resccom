@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "resccom-sim"
+version = "0.1.0"
+description = "CLI for ResCCOM subscriber & SIM provisioning (WBS 3.2)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "click==8.1.8",
+    "cryptography==50.0.1",
+]
+
+[project.scripts]
+resccom-sim = "resccom_sim.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["resccom_sim"]

@@ -1,0 +1,67 @@
+################################################################################
+# ResCCOM 1.1-a — SMF (Session Management Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/smf.yaml.in (v2.8.0).
+# UE subnet 10.45.0.0/16, DNS at 10.46.0.53 (rendered from island.yaml
+# by island-init render — do not hand-edit).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/smf.log
+
+global:
+  max:
+    ue: 1024
+
+smf:
+  # 3.3-c v2d: ogs_sbi_fqdn_in_vplmn()/ogs_sbi_plmn_id_in_vplmn() return
+  # false whenever the calling NF has no `serving:` PLMN configured
+  # (lib/sbi/context.c:3050, :3114) -- SMF is one of the two NFs
+  # (with AMF) whose own SBI client calls these to decide whether a
+  # target is foreign. Not present in upstream's own example (only its
+  # nrf.yaml.in has `serving:`), but needed here for the FQDN-based
+  # foreign-PLMN check to ever say "foreign" in the first place.
+  serving:
+    - plmn_id:
+        mcc: 001
+        mnc: 01
+  sbi:
+    server:
+      # 3.3-c v2d: FQDN as the primary listener, default port 80 -- see
+      # ausf.yaml.j2's comment for the full reasoning (identical here;
+      # found live via this exact NF: SEPP forwarded a real cross-island
+      # PDU session create to smf.5gc.mnc001.mcc001.3gppnetwork.org with
+      # no port and got "Connection refused" while SMF was still only
+      # listening on 7777).
+      - address: smf.5gc.mnc001.mcc001.3gppnetwork.org
+    client:
+      nrf:
+        - uri: http://nrf.5gc.mnc001.mcc001.3gppnetwork.org
+  pfcp:
+    server:
+      - address: 10.10.0.4
+    client:
+      upf:
+        - address: 10.10.0.7
+  gtpc:
+    server:
+      - address: 10.10.0.4
+  gtpu:
+    server:
+      - address: 10.10.0.4
+  metrics:
+    server:
+      - address: 10.10.0.4
+        port: 9090
+  session:
+    - subnet: 10.45.0.0/16
+      gateway: 10.45.0.1
+  dns:
+    - 10.46.0.53
+  mtu: 1400
+  # Gx Diameter toward PCRF (1.1-d): 5G sessions take policy from PCF over
+  # SBI, but in 4G mode SMF plays PGW-C and refuses CreateSession without a
+  # Gx peer ("No Gx Diameter Peer", s5c-handler.c) — so the EPC needs PCRF.
+  freeDiameter: /opt/open5gs/etc/freeDiameter/smf.conf
+  # CTF (offline charging toward a CDF) stays off — nothing here bills.
+  ctf:
+    enabled: no

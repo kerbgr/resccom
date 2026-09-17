@@ -1,0 +1,26 @@
+name: Reproduction report
+description: You followed the docs — tell us where they broke (or that they worked). The most valuable issue type in this repo.
+title: "[repro] "
+labels: ["reproduction"]
+body:
+  - type: input
+    id: what
+    attributes:
+      label: What were you reproducing?
+      placeholder: "stack/core TASKS 1.1-a → 1.1-c on Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, versions, hardware (if any), container runtime
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened
+      description: Where the docs failed you (exact step + output), or confirmation everything passed
+    validations:
+      required: true

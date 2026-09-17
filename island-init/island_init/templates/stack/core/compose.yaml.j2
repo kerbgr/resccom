@@ -1,0 +1,454 @@
+################################################################################
+# ResCCOM 1.1-a — Open5GS 5G SA core under Docker Compose
+#
+# Upstream, unmodified images only (see CLAUDE.md "Never fork upstreams"):
+#   - gradiant/open5gs   — see README.md "Versions" for the pinned tag
+#   - mongo              — see README.md "Versions" for the pinned tag
+#
+# Network functions run one-container-per-daemon on a fixed-address internal
+# network (core_net) so each NF's own config can hardcode its peers' SBI/PFCP
+# addresses, matching how upstream ships its sample configs. AMF's NGAP
+# (SCTP) is the only interface published to the host, for gNB/UE attach.
+################################################################################
+
+networks:
+  core_net:
+    # 3.3-b: explicit, env-var-defaulted name (same pattern as
+    # services_net below) so stack/federation/compose.yaml -- a separate
+    # compose project -- has a stable name to attach to as `external`.
+    # Unset, this is exactly today's Compose-default name for this
+    # project ("core_core_net"), so the golden rule holds.
+    name: ${CORE_NET_NAME:-core_core_net}
+    driver: bridge
+    # No NF here ever needs the internet (SBI/PFCP/NGAP are all
+    # internal-only) — `internal: true` makes that a Docker-enforced
+    # guarantee, not just circumstance, backing the 1.1-c "offline-first"
+    # acceptance check (no WAN path exists to remove).
+    internal: true
+    ipam:
+      config:
+        - subnet: {{ core_net_subnet }}
+  # 1.3-a: the services subnet (CLAUDE.md convention). Created here, not in
+  # stack/services, because UPF — not a new container — is this subnet's
+  # router: it already owns the UE's PDU-session gateway (10.45.0.1 on
+  # ogstun) and already forwards (verified live: net.ipv4.ip_forward=1 out
+  # of the box). `island.sh` brings core up before services (1.3-f), so
+  # core owning this network lets stack/services/compose.yaml attach to it
+  # as `external` without an ordering conflict. Not `internal: true`: the
+  # DNS container (1.3-a) needs an optional path to WAN resolvers, and
+  # later services on this subnet are expected to want the same.
+  #
+  # Docker itself claims 10.46.0.1 as the bridge's own gateway address (a
+  # host-side veth, not assignable to a container) — UPF takes .2 instead,
+  # see its ENABLE_NAT comment below for how return traffic still finds
+  # its way back into the UE subnet without every services container
+  # needing a static route to 10.45.0.0/16.
+  services_net:
+    name: ${SERVICES_NET_NAME:-resccom_services_net}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: {{ services_subnet }}
+
+volumes:
+  mongo-data:
+
+services:
+  mongo:
+    image: mongo:8.0.30
+    networks:
+      core_net:
+        ipv4_address: {{ mongo_ip }}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # 3.3-c v2d: every SBI NF below gets the same extra_hosts block --
+  # every core FQDN resolved to its own fixed core_net address. This lab
+  # runs no DNS server on core_net; a real deployment's DNS plays this
+  # role once the FQDN-addressing convention (TS23.003, matched here
+  # against upstream's own configs/examples/5gc-no-scp-sepp2-001-01.yaml.in)
+  # goes beyond one host. No longer a SEPP-only special case (3.3-c v2b) --
+  # NRF's own primary listener is now an FQDN too (nrf.yaml.j2), so every
+  # NF that dials it (i.e. every NF here) needs to resolve it, peered or
+  # not.
+  nrf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-nrfd
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ nrf_ip }}
+    volumes:
+      - ./config/nrf.yaml:/opt/open5gs/etc/open5gs/nrf.yaml:ro
+    healthcheck:
+      # 3.3-c v2d: NRF's own listener resolves its FQDN to this same
+      # address (extra_hosts above) and binds it on the default port 80
+      # instead of 7777 -- see nrf.yaml.j2.
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ nrf_ip }}/80"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ausf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-ausfd
+    depends_on:
+      - nrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ ausf_ip }}
+    volumes:
+      - ./config/ausf.yaml:/opt/open5gs/etc/open5gs/ausf.yaml:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ ausf_ip }}/80"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  udm:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-udmd
+    depends_on:
+      - nrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ udm_ip }}
+    volumes:
+      - ./config/udm.yaml:/opt/open5gs/etc/open5gs/udm.yaml:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ udm_ip }}/80"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  udr:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-udrd
+    depends_on:
+      nrf:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ udr_ip }}
+    volumes:
+      - ./config/udr.yaml:/opt/open5gs/etc/open5gs/udr.yaml:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ udr_ip }}/7777"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  pcf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-pcfd
+    depends_on:
+      nrf:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ pcf_ip }}
+    volumes:
+      - ./config/pcf.yaml:/opt/open5gs/etc/open5gs/pcf.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://{{ pcf_ip }}:9090/metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  nssf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-nssfd
+    depends_on:
+      - nrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ nssf_ip }}
+    volumes:
+      - ./config/nssf.yaml:/opt/open5gs/etc/open5gs/nssf.yaml:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ nssf_ip }}/80"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  bsf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-bsfd
+    depends_on:
+      - nrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ bsf_ip }}
+    volumes:
+      - ./config/bsf.yaml:/opt/open5gs/etc/open5gs/bsf.yaml:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ bsf_ip }}/7777"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  smf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-smfd
+    depends_on:
+      - nrf
+      - pcrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ smf_ip }}
+    volumes:
+      - ./config/smf.yaml:/opt/open5gs/etc/open5gs/smf.yaml:ro
+      - ./config/freeDiameter/smf.conf:/opt/open5gs/etc/freeDiameter/smf.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://{{ smf_ip }}:9090/metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  amf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-amfd
+    depends_on:
+      - nrf
+      - smf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ amf_ip }}
+    ports:
+      - "${AMF_NGAP_PORT:-38412}:38412/sctp"
+    volumes:
+      - ./config/amf.yaml:/opt/open5gs/etc/open5gs/amf.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://{{ amf_ip }}:9090/metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+{% if peers %}
+  # 3.3-c v2: rendered only when a peer is allow-listed (unpeered
+  # island's compose.yaml is byte-identical to before -- golden rule).
+  # SEPP, not AMF, is now the only container that originates cross-island
+  # traffic: AMF's own SBI client library detects a roaming SUCI (home
+  # PLMN != this island's serving PLMN) and routes to *this island's own,
+  # locally-registered* SEPP over plain core_net (upstream's own
+  # lib/sbi/path.c ogs_sbi_send_request_with_sepp_discovery -- verified
+  # by reading it, not assumed); SEPP is the one that then needs to reach
+  # the peer's SEPP over the overlay, exactly the role amf_services_ip
+  # used to play for direct NRF/UDM reachability (closed off by 3.3-c v2
+  # step 3's narrower forward-filter).
+  sepp:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-seppd
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nrf
+    extra_hosts:
+{%- for h in fqdn_hosts %}
+      - "{{ h.fqdn }}:{{ h.ip }}"
+{%- endfor %}
+    networks:
+      core_net:
+        ipv4_address: {{ sepp_ip }}
+      services_net:
+        ipv4_address: {{ sepp_services_ip }}
+    volumes:
+      - ./config/sepp.yaml:/opt/open5gs/etc/open5gs/sepp.yaml:ro
+    restart: unless-stopped
+{% endif %}
+  upf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-upfd
+    # The image's entrypoint.sh creates the ogstun TUN device and also runs
+    # `sysctl -w net.ipv6.conf.all.disable_ipv6=0` unconditionally, under
+    # `set -e` — that sysctl write needs real (non-namespaced) CAP_NET_ADMIN,
+    # which a plain `cap_add: NET_ADMIN` does not grant to a non-root user or
+    # past Docker's default readonly /proc/sys mount. Without privileged, the
+    # entrypoint aborts and the container restart-loops. This is the same
+    # privileged UPF pattern used by other open5gs docker-compose recipes.
+    privileged: true
+    user: root
+    environment:
+      IPV4_TUN_SUBNET: "{{ ue_subnet }}"
+      IPV4_TUN_ADDR: "{{ ue_gateway_cidr }}"
+      # 1.3-a: the image's own entrypoint (unmodified — not a fork, see
+      # CLAUDE.md) turns this into exactly one iptables rule:
+      # `-t nat -A POSTROUTING -s 10.45.0.0/16 ! -o ogstun -j MASQUERADE`.
+      # That only matches traffic sourced from the UE subnet leaving by a
+      # non-ogstun interface — i.e. UE->services_net breakout — so a
+      # services container never needs to know the UE subnet exists at
+      # all: it just sees UPF's own services_net address (10.46.0.2) and
+      # replies to that, and UPF's conntrack un-NATs the reply back into
+      # ogstun to the right UE. UPF's own core_net (SBI/PFCP) traffic is
+      # untouched (wrong source prefix to match).
+      ENABLE_NAT: "true"
+    networks:
+      core_net:
+        ipv4_address: {{ upf_ip }}
+      # 1.3-a: UPF's own address on the services subnet (not .1 — see the
+      # services_net comment above). Every current/future services
+      # container just needs an ordinary address on services_net; none of
+      # this NAT wiring is visible to them.
+      services_net:
+        ipv4_address: {{ upf_services_ip }}
+    volumes:
+      - ./config/upf.yaml:/opt/open5gs/etc/open5gs/upf.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://{{ upf_ip }}:9090/metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # -- 4G EPC (1.1-d) — dual-mode alongside the 5G SA core above. SMF/UPF
+  #    above already double as PGW-C/PGW-U (their gtpc/gtpu servers are
+  #    upstream's shared defaults, unmodified for this) so only the
+  #    EPC-only functions are added here.
+
+  pcrf:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-pcrfd
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      core_net:
+        ipv4_address: {{ pcrf_ip }}
+    volumes:
+      - ./config/pcrf.yaml:/opt/open5gs/etc/open5gs/pcrf.yaml:ro
+      - ./config/freeDiameter/pcrf.conf:/opt/open5gs/etc/freeDiameter/pcrf.conf:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ pcrf_ip }}/3868"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  hss:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-hssd
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      core_net:
+        ipv4_address: {{ hss_ip }}
+    volumes:
+      - ./config/hss.yaml:/opt/open5gs/etc/open5gs/hss.yaml:ro
+      - ./config/freeDiameter/hss.conf:/opt/open5gs/etc/freeDiameter/hss.conf:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ hss_ip }}/3868"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  sgwu:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-sgwud
+    networks:
+      core_net:
+        ipv4_address: {{ sgwu_ip }}
+    volumes:
+      - ./config/sgwu.yaml:/opt/open5gs/etc/open5gs/sgwu.yaml:ro
+    restart: unless-stopped
+
+  sgwc:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-sgwcd
+    depends_on:
+      - sgwu
+    networks:
+      core_net:
+        ipv4_address: {{ sgwc_ip }}
+    volumes:
+      - ./config/sgwc.yaml:/opt/open5gs/etc/open5gs/sgwc.yaml:ro
+    restart: unless-stopped
+
+  mme:
+    image: gradiant/open5gs:2.8.0
+    platform: linux/amd64
+    command: open5gs-mmed
+    depends_on:
+      - hss
+      - sgwc
+    networks:
+      core_net:
+        ipv4_address: {{ mme_ip }}
+    volumes:
+      - ./config/mme.yaml:/opt/open5gs/etc/open5gs/mme.yaml:ro
+      - ./config/freeDiameter/mme.conf:/opt/open5gs/etc/freeDiameter/mme.conf:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/{{ mme_ip }}/3868"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped

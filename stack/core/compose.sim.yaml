@@ -1,0 +1,67 @@
+################################################################################
+# ResCCOM 1.1-c — UERANSIM verification overlay (gNB + one UE)
+#
+# Upstream, unmodified image (see CLAUDE.md "Never fork upstreams"):
+#   - gradiant/ueransim — see README.md "Versions" for the pinned tag
+#
+# Usage: docker compose -f compose.yaml -f compose.sim.yaml up -d
+# Both containers join the core's own core_net and reach AMF/UPF by
+# service name — no extra network needed. [SIM] path only: this replaces
+# real radio hardware with UERANSIM's simulated gNB/UE, per CLAUDE.md.
+################################################################################
+
+services:
+  gnb:
+    image: gradiant/ueransim:3.3.0
+    platform: linux/amd64
+    command: gnb
+    environment:
+      MCC: "001"
+      MNC: "01"
+      TAC: "1"
+      SST: "1"
+      AMF_HOSTNAME: amf
+    networks:
+      - core_net
+    depends_on:
+      - amf
+    restart: unless-stopped
+
+  ue:
+    image: gradiant/ueransim:3.3.0
+    platform: linux/amd64
+    # The image's own entrypoint runs `nr-ue ... & wait`, and nr-ue then
+    # reliably aborts right after its first PDU session establishes
+    # (`terminate called after throwing 'LibError': select failed:
+    # Interrupted system call`) — verified: it does this 5/5 times through
+    # the stock entrypoint, and 0/many when nr-ue instead replaces the
+    # shell as PID 1 via `exec` (no intervening wait/timeout). This
+    # reproduces the entrypoint's own config-templating steps and then
+    # `exec`s nr-ue directly, using the same upstream binary and config
+    # template — not a fork, just a different invocation.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        export GNB_IP=$$(host -4 $$GNB_HOSTNAME | awk '/has.*address/{print $$NF; exit}')
+        envsubst < /etc/ueransim/ue.yaml > /ue.yaml
+        exec nr-ue -c /ue.yaml
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      MCC: "001"
+      MNC: "01"
+      MSISDN: "0000000001"
+      KEY: "465B5CE8B199B49FAA5F0A2EE238A6BC"
+      OP: "E8ED289DEBA952E4283B54E88E6183CA"
+      OP_TYPE: "OPC"
+      APN: internet
+      SST: "1"
+      GNB_HOSTNAME: gnb
+    networks:
+      - core_net
+    depends_on:
+      - gnb
+    restart: unless-stopped

@@ -1,0 +1,23 @@
+################################################################################
+# ResCCOM 1.1-d — SGW-C (Serving Gateway, control plane, 4G EPC)
+# Derived from upstream open5gs/open5gs configs/open5gs/sgwc.yaml.in (v2.8.0).
+# SGW-C is the active side of the Sxa PFCP association toward SGW-U.
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/sgwc.log
+
+global:
+  max:
+    ue: 1024
+
+sgwc:
+  gtpc:
+    server:
+      - address: 10.10.0.31
+  pfcp:
+    server:
+      - address: 10.10.0.31
+    client:
+      sgwu:
+        - address: 10.10.0.32

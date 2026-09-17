@@ -1,0 +1,37 @@
+name: Task
+description: A unit of work tied to a WBS code
+title: "[WBS x.x] "
+labels: ["task"]
+body:
+  - type: input
+    id: wbs
+    attributes:
+      label: WBS code
+      description: From ROADMAP.md (e.g. 1.3-b). Use "none" only for work outside the WBS.
+      placeholder: "1.1-c"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What is true when this is done?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Commands/checks that must pass, verbatim. If it can't be verified, it isn't a task yet.
+    validations:
+      required: true
+  - type: dropdown
+    id: hw
+    attributes:
+      label: Hardware needed?
+      options:
+        - "No — software/docs only"
+        - "[HW] SDR / SIMs / phones"
+        - "[HW] under test license or shielded enclosure"
+    validations:
+      required: true

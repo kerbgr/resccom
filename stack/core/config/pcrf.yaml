@@ -1,0 +1,18 @@
+################################################################################
+# ResCCOM 1.1-d — PCRF (Policy and Charging Rules Function, 4G EPC)
+# Derived from upstream open5gs/open5gs configs/open5gs/pcrf.yaml.in (v2.8.0).
+# The 4G-side twin of the PCF: SMF (as PGW-C) requires a Gx Diameter peer to
+# accept a 4G session at all. Reads policy from the SAME mongo/`subscribers`
+# collection as HSS/UDR — the 1.1-b document carries the QoS/AMBR it needs.
+################################################################################
+db_uri: mongodb://mongo/open5gs
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/pcrf.log
+
+global:
+  max:
+    ue: 1024
+
+pcrf:
+  freeDiameter: /opt/open5gs/etc/freeDiameter/pcrf.conf

@@ -1,0 +1,120 @@
+# ResCCOM 3.3-a — island-B lab fixture.
+#
+# A second, independently-addressed lab island, for the "two islands on
+# one host" test (stack/federation/TASKS.md 3.3-a). Everything that would
+# collide if both islands ran on one host at once (IMSI block, UE/
+# services prefixes, DNS zone, node-internal base) is distinct.
+#
+# PLMN 999/70, distinct from island A's 001/01 (RFC-0003 D1 amendment,
+# 2026-09-15, 3.3-c v2): the original same-PLMN/SUPI-range roaming model
+# was closed by a live negative finding against Open5GS 2.8.0 (TASKS.md
+# 3.3-c) -- NRF doesn't store/honour `supiRanges`. 999/70 mirrors
+# upstream's own roaming example pairing (configs/examples/5gc-sepp1-999-
+# 70.yaml.in) exactly, including which of the image's bundled SEPP TLS
+# identities (sepp1) this island's SEPP config renders with -- see
+# island_init/render.py's SEPP_CERT_BY_PLMN. `realm` is unaffected by any
+# of this -- see its own comment below for the TLS-cert constraint found
+# live.
+#
+# Not consumed by `island-init render --lab` (that's island.example.yaml,
+# island A, still the golden-rule baseline). Render this one explicitly:
+#   island-init check island.example.b.yaml
+#   island-init render --file island.example.b.yaml --repo-root <a second
+#     checkout of this repo -- island A and island B cannot both render
+#     into stack/core/ in the SAME checkout, since each render overwrites
+#     the same file paths>
+
+profile: lab
+
+island:
+  id: island-b
+  display_name: ResCCOM Lab Island B
+  country: XX
+  node_classes: [dev]
+  signing_key_fingerprint: null
+  overlay:
+    endpoint: null
+    wireguard_public_key: null
+    # 3.3-b: distinct from island A's 10.99.0.1/24 -- same dedicated lab
+    # overlay-mesh range, different host address.
+    address: 10.99.0.2/24
+
+allocations:
+  # 999/70, mirroring upstream's own SEPP roaming example pairing -- see
+  # this file's header comment.
+  plmn:
+    mcc: "999"
+    mnc: "70"
+  imsi_block: "99970"
+  tac_range: [1, 1]
+  ue_prefix:
+    v4: 10.47.0.0/16
+    v6_ula: null
+  services_prefix: 10.48.0.0/24
+  # Same as island A's, deliberately -- found live while bringing this
+  # fixture up: gradiant/open5gs's freeDiameter TLS certs
+  # (/opt/open5gs/etc/open5gs/tls/{hss,mme,pcrf,smf}.crt) are the
+  # upstream sample image's own self-signed certs, each with a fixed CN
+  # (verified: "hss.localdomain", no SAN, no wildcard) -- any realm other
+  # than "localdomain" makes fd_conf_parse's own hostname check reject
+  # its own cert at startup ("TLS: The certificate owner does not match
+  # the hostname 'hss.islandb.localdomain'"), and HSS/MME abort-loop.
+  # Per-island realms (RFC-0005 D1) need per-island certs, which is PKI
+  # work (WBS 3.4, still open) or part of 3.3-d's own freeDiameter VERIFY
+  # marker -- out of scope here. dns_zone below is unaffected (no TLS
+  # involved) and stays distinct.
+  realm: localdomain
+  dns_zone: islandb
+
+# 3.3-a: node-internal addressing -- distinct from island A's
+# 10.10.0.0/16 so both islands' core_net (each a first /24 of this base)
+# can coexist as separate Docker bridge networks on one host.
+node:
+  internal_base: 10.20.0.0/16
+
+# No physical site survey exists for island B either -- this fixture
+# exists to exercise stack/core (Open5GS + UERANSIM) standalone, not
+# stack/ran.
+sites: []
+
+services:
+  enabled:
+    library: true
+    chat: true
+    talk: true
+    portal: true
+    console: true
+    pemea_ap: false
+  portal_association_name: null
+  portal_operator_contact: null
+
+backhaul:
+  uplinks:
+    - name: fixed
+      priority: 1
+      bandwidth_kbit: 2000
+    - name: satellite
+      priority: 2
+      bandwidth_kbit: 1000
+    - name: ptp
+      priority: 3
+      bandwidth_kbit: 500
+
+federation:
+  items:
+    - name: content_library
+      share: false
+      priority_class: best_effort
+    - name: matrix_rooms
+      share: false
+      priority_class: best_effort
+    - name: incident_records
+      share: false
+      priority_class: best_effort
+    - name: coverage_polygon
+      share: false
+      priority_class: best_effort
+  # 3.3-b: empty in the tracked fixture, same reasoning as island A's --
+  # the live two-island overlay test peers these islands at test time
+  # without committing that transient, per-run WireGuard keypair state.
+  peers: []

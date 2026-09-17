@@ -1,0 +1,31 @@
+################################################################################
+# ResCCOM 1.1-a — UPF (User Plane Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/upf.yaml.in (v2.8.0).
+# UE subnet {{ ue_subnet }} (rendered from island.yaml by island-init
+# render — do not hand-edit).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/upf.log
+{%- if log_level != "info" %}
+  level: {{ log_level }}
+{%- endif %}
+
+global:
+  max:
+    ue: 1024
+
+upf:
+  pfcp:
+    server:
+      - address: {{ upf_ip }}
+  gtpu:
+    server:
+      - address: {{ upf_ip }}
+  session:
+    - subnet: {{ ue_subnet }}
+      gateway: {{ ue_gateway }}
+  metrics:
+    server:
+      - address: {{ upf_ip }}
+        port: 9090

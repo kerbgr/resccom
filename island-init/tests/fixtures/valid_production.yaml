@@ -1,0 +1,94 @@
+# Fixture only: a syntactically/semantically valid `profile: production`
+# document with a real (but throwaway, freshly generated for this
+# fixture) signing keypair and a genuinely valid signature over its own
+# content -- regenerate via island_init.wizard/crypto if this file's
+# content ever changes, or check_signature will reject it as tampered.
+profile: production
+island:
+  id: example-atoll
+  display_name: Example Atoll Association
+  country: FR
+  node_classes:
+    - b
+  signing_key_fingerprint: SHA256:75t6NV8/Jfsq9jJorqZyS1gbUywNKhfYr5farsXdD90
+  overlay:
+    endpoint: overlay.example-atoll.islands.arpa:51820
+    wireguard_public_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    address: 10.201.0.7/24
+  signing_public_key: PUtaDzcZ7QxOlTKidnXgA6bTolezi423Zy5b9gwhYEY=
+allocations:
+  plmn:
+    mcc: '999'
+    mnc: '70'
+  imsi_block: '9997000001'
+  tac_range:
+    - 100
+    - 100
+  ue_prefix:
+    v4: 100.70.0.0/16
+    v6_ula: fd00:70::/48
+  services_prefix: 100.71.0.0/24
+  realm: example-atoll.islands.arpa
+  dns_zone: example-atoll.islands.arpa
+node:
+  internal_base: 10.10.0.0/16
+sites:
+  - id: main-mast
+    name: Main community mast
+    lat: 12.34
+    lon: 56.78
+    height_m: 18
+    cells:
+      - rat: lte
+        band: '7'
+        earfcn: 3350
+        arfcn: null
+        pci: 5
+        bandwidth_mhz: 10
+        tx_power_dbm: 37
+        azimuth_deg: 120
+        antenna_notes: Sector 1, omni fallback if sectorization fails
+        predicted_coverage:
+          polygon_ref: null
+          model: null
+        measured_points:
+          file_ref: null
+services:
+  enabled:
+    library: true
+    chat: true
+    talk: true
+    portal: true
+    console: true
+    pemea_ap: false
+  portal_association_name: Example Atoll Association
+  portal_operator_contact: VHF ch. 16, or the community hall, staffed 08:00-20:00
+    local
+backhaul:
+  uplinks:
+    - name: fixed
+      priority: 1
+      bandwidth_kbit: 2000
+    - name: satellite
+      priority: 2
+      bandwidth_kbit: 1000
+federation:
+  items:
+    - name: content_library
+      share: true
+      priority_class: best_effort
+    - name: matrix_rooms
+      share: false
+      priority_class: best_effort
+    - name: incident_records
+      share: true
+      priority_class: high
+    - name: coverage_polygon
+      share: false
+      priority_class: best_effort
+  peers: []
+signature:
+  algorithm: ed25519
+  public_key_fingerprint: SHA256:75t6NV8/Jfsq9jJorqZyS1gbUywNKhfYr5farsXdD90
+  value:
+    87G3xQ0DZVcCcKHmaXWvPiFriygIVrInBBRhva9fVUnzUO33/+BbVvqPSqsv73/vsrjScVehMFpjZ5RtPL7/BA==

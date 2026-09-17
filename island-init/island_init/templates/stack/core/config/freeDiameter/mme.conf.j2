@@ -1,0 +1,26 @@
+# ResCCOM 1.1-d — MME's freeDiameter (S6a) config.
+# Derived from upstream configs/freeDiameter/mme.conf.in (v2.8.0): only the
+# ListenOn/ConnectTo addresses and @sysconfdir@/@libdir@ paths are resubbed
+# for this compose network; everything else is upstream's default.
+# Realm {{ realm }} rendered from island.yaml by island-init render — do
+# not hand-edit.
+
+Identity = "mme.{{ realm }}";
+Realm = "{{ realm }}";
+
+ListenOn = "{{ mme_ip }}";
+
+TLS_Cred = "/opt/open5gs/etc/open5gs/tls/mme.crt", "/opt/open5gs/etc/open5gs/tls/mme.key";
+TLS_CA = "/opt/open5gs/etc/open5gs/tls/ca.crt";
+
+NoRelay;
+
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dbg_msg_dumps.fdx" : "0x8888";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_rfc5777.fdx";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_mip6i.fdx";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_nasreq.fdx";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_nas_mipv6.fdx";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_dcca.fdx";
+LoadExtension = "/opt/open5gs/lib/freeDiameter/dict_dcca_3gpp.fdx";
+
+ConnectPeer = "hss.{{ realm }}" { ConnectTo = "{{ hss_ip }}"; No_TLS; };

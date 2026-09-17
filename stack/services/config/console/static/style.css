@@ -1,0 +1,18 @@
+html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; color: #1a1a1a; }
+#wrap { display: flex; flex-direction: column; height: 100%; }
+header { display: flex; align-items: baseline; gap: 12px; padding: 8px 12px; background: #1a1a1a; color: #fff; }
+header h1 { font-size: 1.1em; margin: 0; }
+#main { flex: 1; display: flex; min-height: 0; }
+#map { flex: 1; min-width: 0; }
+#panel { width: 340px; overflow-y: auto; padding: 8px 12px; box-sizing: border-box; border-left: 1px solid #ccc; background: #fafafa; }
+#panel section { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #ddd; }
+#panel h2 { font-size: 0.95em; margin: 0 0 6px 0; }
+#panel label { display: block; font-size: 0.85em; margin: 4px 0; }
+#panel input[type="text"], #panel input[type="number"] { width: 100%; box-sizing: border-box; padding: 3px 4px; }
+.hint { font-size: 0.8em; color: #666; }
+.legend { font-size: 0.75em; color: #444; padding: 4px 6px; background: #fff6e0; border: 1px dashed #b8952f; margin: 4px 0; }
+.cell-card { border: 1px solid #ddd; padding: 6px; margin: 6px 0; background: #fff; font-size: 0.85em; }
+.cell-card label { margin: 2px 0; }
+#result { white-space: pre-wrap; font-size: 0.75em; background: #111; color: #0f0; padding: 6px; max-height: 200px; overflow-y: auto; }
+button { cursor: pointer; padding: 5px 10px; margin: 2px 4px 2px 0; }
+.issue { color: #a01818; font-size: 0.8em; }

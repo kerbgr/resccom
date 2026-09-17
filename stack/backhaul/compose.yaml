@@ -1,0 +1,94 @@
+################################################################################
+# ResCCOM 1.4-a — WAN uplink abstraction & failover ("wan-edge")
+#
+# Our own glue (Apache-2.0, CLAUDE.md) — no upstream to pin here, just a
+# small custom image (../Dockerfile) running wand.py (../config/wand.py).
+#
+# wan_fixed_net / wan_sat_net / wan_ptp_net stand in for three physical
+# WAN NICs a real node would have (fixed-line modem, satellite CPE,
+# inter-island PtP radio) — see README.md "Why containers, not real
+# interfaces" for why this dev machine (macOS/Docker Desktop, no
+# manageable host WAN) uses this rig instead of systemd-networkd against
+# real interfaces, which is what a bare-metal Debian node would use this
+# same wand.py/uplinks.yaml pair against instead. None of the three is
+# `internal: true`: each is an ordinary Docker bridge, independently
+# NAT'd to the real internet by the host exactly like services_net's own
+# DNS forwarder already is (../services/config/coredns/Corefile) — so
+# wand.py's health checks exercise a genuinely independent, real path per
+# uplink, and `docker network disconnect <net> wan-edge` /
+# `docker network connect --ip <ip> <net> wan-edge` (../verify.sh) is a
+# faithful simulation of unplugging/replugging one real WAN cable: same
+# veth-into-a-netns mechanism Docker always uses for network attachment,
+# just triggered by us instead of a physical event.
+#
+# wan-edge also joins services_net (10.46.0.90) for exactly one reason:
+# so its /status endpoint (TASKS.md 1.4-a step 3) is reachable for the
+# portal's status display, the same role nomad-gateway/matrix-gateway
+# already play as the dual-homed bridge onto that network for their own
+# components. It does NOT become services_net's default gateway/NAT
+# path — that stays exactly what stack/core's UPF already set up
+# (../core/compose.yaml). Wiring real island egress through wan-edge is
+# deliberately left to whichever later task actually needs controlled
+# egress — see README.md "What this module does not do yet".
+#
+# net.ipv4.ip_forward=1 (1.4-c): wan-edge doesn't forward services_net's
+# own traffic (see above), but ../qos-test.sh does attach an ephemeral
+# downstream "clients" network to it to generate real traffic for the
+# QoS shaping test — that needs actual forwarding. Docker refuses to let
+# even a NET_ADMIN container write /proc/sys/net/ipv4/ip_forward itself
+# at runtime (confirmed live: read-only filesystem) — this `sysctls:`
+# entry is Docker's own documented, non-privileged way to set one
+# specific namespace-scoped sysctl at container creation instead.
+################################################################################
+
+networks:
+  services_net:
+    name: resccom_services_net
+    external: true
+  wan_fixed_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.90.1.0/28
+  wan_sat_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.90.2.0/28
+  wan_ptp_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.90.3.0/28
+
+services:
+  wan-edge:
+    build:
+      context: .
+    image: resccom/wan-edge:1.4-a
+    # CAP_NET_ADMIN alone (no `privileged`) is enough for wand.py's own
+    # `ip route`/`ip rule` calls — unlike stack/core's UPF (needs a
+    # kernel sysctl write `cap_add` can't reach; see its own comment),
+    # policy routing inside a container's own netns is exactly what
+    # NET_ADMIN is for.
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      wan_fixed_net:
+        ipv4_address: 10.90.1.2
+      wan_sat_net:
+        ipv4_address: 10.90.2.2
+      wan_ptp_net:
+        ipv4_address: 10.90.3.2
+      services_net:
+        ipv4_address: 10.46.0.90
+    volumes:
+      - ./config/uplinks.yaml:/app/uplinks.yaml:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/status', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

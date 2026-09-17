@@ -1,0 +1,41 @@
+name: docs-check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  links-and-mermaid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check internal markdown links
+        run: |
+          set -e
+          fail=0
+          # Every relative link target in .md files must exist
+          grep -rnoE '\]\((\.{0,2}/)?[A-Za-z0-9_./-]+\.(md|yml|yaml|sh)(#[A-Za-z0-9-]*)?\)' --include='*.md' . \
+          | sed -E 's/:([0-9]+):\]\(/:\1 /; s/\)$//' \
+          | while IFS=' ' read -r loc target; do
+              file="${loc%%:*}"
+              dir="$(dirname "$file")"
+              tpath="${target%%#*}"
+              if [ ! -e "$dir/$tpath" ] && [ ! -e "$tpath" ]; then
+                echo "BROKEN: $loc -> $target"
+                fail=1
+              fi
+            done
+          exit $fail
+      - name: Validate mermaid blocks
+        run: |
+          npm install -g @mermaid-js/mermaid-cli@11
+          set -e
+          # mermaid-cli launches Chromium via Puppeteer; the default
+          # sandbox needs a user namespace the GitHub-hosted runner's
+          # container doesn't have ("No usable sandbox!"), so every run
+          # failed regardless of the .md content being checked --
+          # --no-sandbox is Puppeteer's own documented workaround for
+          # exactly this containerized-CI case.
+          for f in $(grep -rl '```mermaid' --include='*.md' .); do
+            echo "checking $f"
+            npx -y @mermaid-js/mermaid-cli -i "$f" -o /tmp/out.md -p .github/mermaid-puppeteer-config.json >/dev/null
+          done

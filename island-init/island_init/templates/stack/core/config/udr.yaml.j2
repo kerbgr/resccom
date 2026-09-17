@@ -1,0 +1,30 @@
+################################################################################
+# ResCCOM 1.1-a — UDR (Unified Data Repository)
+# Derived from upstream open5gs/open5gs configs/open5gs/udr.yaml.in (v2.8.0).
+# db_uri points at the compose "mongo" service — no credentials embedded.
+################################################################################
+db_uri: mongodb://mongo/open5gs
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/udr.log
+{%- if log_level != "info" %}
+  level: {{ log_level }}
+{%- endif %}
+
+global:
+  max:
+    ue: 1024
+
+udr:
+  sbi:
+    # 3.3-c v2d: UDR's own listener stays a plain core_net IP, matching
+    # upstream's own home-PLMN roaming example (nrf.yaml.j2's comment
+    # has the full reasoning for which NFs get an FQDN listener and
+    # which don't). Its client.nrf.uri becomes the FQDN like every
+    # other NF's, since that's what needs to resolve.
+    server:
+      - address: {{ udr_ip }}
+        port: 7777
+    client:
+      nrf:
+        - uri: http://{{ nrf_fqdn }}

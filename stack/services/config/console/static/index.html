@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Island Console</title>
+<link rel="stylesheet" href="/vendor/maplibre-gl.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="wrap">
+
+  <header>
+    <h1>Island Console</h1>
+    <span id="island-name"></span>
+  </header>
+
+  <div id="main">
+    <div id="map"></div>
+
+    <aside id="panel">
+      <section id="identity-section">
+        <h2>Island</h2>
+        <label>Display name <input id="f-display-name" type="text"></label>
+        <label>Country <input id="f-country" type="text" maxlength="2" style="text-transform:uppercase"></label>
+      </section>
+
+      <section id="services-section">
+        <h2>Services</h2>
+        <div id="services-toggles"></div>
+        <label>Portal association name <input id="f-assoc-name" type="text"></label>
+        <label>Portal operator contact <input id="f-assoc-contact" type="text"></label>
+      </section>
+
+      <section id="federation-section">
+        <h2>Federation (opt-in sharing)</h2>
+        <div id="federation-toggles"></div>
+      </section>
+
+      <section id="site-section">
+        <h2>Selected site</h2>
+        <p class="hint">Click the map to place a new site. Drag a marker to move it.</p>
+        <div id="site-form" hidden>
+          <label>Name <input id="site-name" type="text"></label>
+          <label>Height (m) <input id="site-height" type="number" step="1"></label>
+          <p><button id="btn-add-cell" type="button">+ add cell</button></p>
+          <div id="cells-list"></div>
+        </div>
+      </section>
+
+      <section id="coverage-section">
+        <h2>Coverage</h2>
+        <label><input id="toggle-predicted" type="checkbox" checked> Predicted coverage</label>
+        <div id="predicted-legend" class="legend"></div>
+        <label><input id="toggle-measured" type="checkbox" checked> Measured points</label>
+      </section>
+
+      <section id="actions-section">
+        <h2>Changes</h2>
+        <label>Operator token <input id="f-operator-token" type="password" autocomplete="off"></label>
+        <p id="draft-status" class="hint"></p>
+        <button id="btn-preview" type="button">Preview render</button>
+        <button id="btn-save-draft" type="button">Save draft</button>
+        <p class="hint">Saving a draft only stages it -- an operator must run
+          <code>./island.sh apply</code> on the node to sign, render, and
+          restart affected services (RFC-0006 D5).</p>
+        <pre id="result"></pre>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="/vendor/pmtiles.js"></script>
+<script src="/vendor/maplibre-gl.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

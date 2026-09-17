@@ -1,0 +1,90 @@
+################################################################################
+# ResCCOM 1.2-a (4G half) — srsRAN 4G eNB + UE over the ZMQ virtual radio.
+#
+# [SIM] path only: the ZMQ device replaces the SDR entirely — no RF is
+# radiated anywhere, no license needed (see TASKS.md's legal warning for
+# anything that DOES radiate). This rig is also what closes stack/core
+# 1.1-d's acceptance criterion (a simulated 4G UE attach against the EPC).
+#
+# Upstream, unmodified image (CLAUDE.md "Never fork upstreams"):
+#   - gradiant/srsran-4g — see README.md "Versions" for the pinned tag.
+#     Its entrypoint env-templates upstream's own example configs; with
+#     ZMQ=true it uncomments upstream's own commented-out zmq device lines.
+#
+# Joins stack/core's core_net (external), same as the UERANSIM overlay:
+# eNB speaks S1AP to MME (10.10.0.30) and GTP-U to SGW-U; UE and eNB
+# exchange baseband samples over ZMQ tcp://10.10.0.60/61:2000/2001.
+# Static addresses because the entrypoint wires ZMQ endpoints by address
+# before both containers are resolvable by name.
+#
+# Usage:  docker compose -f compose.4g.yaml up -d   (core must be up first)
+# Verify: ./verify-4g.sh
+################################################################################
+
+networks:
+  core_net:
+    external: true
+    name: core_core_net
+
+services:
+  enb:
+    image: gradiant/srsran-4g:23_11
+    platform: linux/amd64
+    command: ["enb"]
+    environment:
+      ZMQ: "true"
+      # Peers by fixed address (entrypoint's *_HOSTNAME resolution is
+      # disabled by blanking the image's defaults, so these are taken as-is)
+      MME_ADDR: 10.10.0.30
+      UE_ADDRESS: 10.10.0.61
+      UE_HOSTNAME: ""
+      ENB_HOSTNAME: ""
+      S1C_BIND_ADDR: 10.10.0.60
+      GTP_BIND_ADDR: 10.10.0.60
+      # CLAUDE.md conventions: test PLMN 001/01, TAC 1 (matches mme.yaml)
+      MCC: "001"
+      MNC: "01"
+      TAC: "1"
+      # 25 PRB (5 MHz) keeps the software PHY light — this stack runs
+      # amd64-emulated on Apple-silicon Docker Desktop (see stack/core
+      # README "Known limitations")
+      N_PRB: "25"
+    networks:
+      core_net:
+        ipv4_address: 10.10.0.60
+    restart: unless-stopped
+
+  ue4g:
+    image: gradiant/srsran-4g:23_11
+    platform: linux/amd64
+    # --nas.apn: upstream ue.conf ships with apn commented out; request the
+    # same APN the 1.1-b subscriber document carries ("internet")
+    command: ["ue", "--nas.apn=internet"]
+    environment:
+      ZMQ: "true"
+      # The image's ALGO default is "mil", which srsue rejects — the valid
+      # value is "milenage" (upstream ue.conf.example's own default)
+      ALGO: milenage
+      # Same public UERANSIM test vectors the 1.1-b subscriber uses —
+      # IMSI assembles to MCC+MNC+MSISDN = 001010000000001. Test values,
+      # never real subscriber keys (CLAUDE.md "Never commit secrets").
+      MCC: "001"
+      MNC: "01"
+      MSISDN: "0000000001"
+      KEY: 465B5CE8B199B49FAA5F0A2EE238A6BC
+      OPC: E8ED289DEBA952E4283B54E88E6183CA
+      ENB_ADDRESS: 10.10.0.60
+      UE_ADDRESS: 10.10.0.61
+      UE_HOSTNAME: ""
+      ENB_HOSTNAME: ""
+    # srsue creates its tun_srsue device for the PDN connection
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    networks:
+      core_net:
+        ipv4_address: 10.10.0.61
+    depends_on:
+      - enb
+    restart: unless-stopped

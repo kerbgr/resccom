@@ -1,0 +1,365 @@
+################################################################################
+# ResCCOM 0.3-d — the repo proves itself on every push (docs/TASKS.md 0.3-d).
+#
+# Everything up to milestone M3 (2026-09-17) was verified on one macOS
+# Apple-silicon host under amd64 emulation. GitHub's ubuntu-latest runner is
+# the first *unemulated* x86 Linux run of this stack, and the regression
+# guard for harness changes nobody re-runs by hand.
+#
+# Three jobs:
+#   checks         (required, fast)  pytest for sim-tools + island-init via
+#                                    uvx, the golden rule (island-init render
+#                                    --lab leaves stack/ byte-identical),
+#                                    bash -n on every *.sh, docker compose
+#                                    config on every compose file, shellcheck
+#                                    (errors only) on island.sh + verify
+#                                    scripts, and a no-`latest`/no-untagged
+#                                    image guard.
+#   core-sim       (required)        stack/core/verify.sh end to end: Open5GS
+#                                    5G SA core + UERANSIM gNB/UE attach +
+#                                    local breakout + offline-first check --
+#                                    the M1 core path. Image pulls are cached
+#                                    (docker save/load under actions/cache);
+#                                    compose logs are uploaded on failure.
+#   federation-sim (NOT required)    workflow_dispatch + nightly only:
+#                                    stack/federation/two-island.sh verify,
+#                                    then roam --ue oai (milestone M3's
+#                                    vehicle). Two cores + WireGuard + OAI on
+#                                    a free runner is at the memory edge --
+#                                    measurements below; never a required
+#                                    check, never on push.
+#
+# What CI deliberately does NOT cover: anything that radiates RF ([HW] tasks
+# wait on a partner lab with a license or shielded box), Starlink/WAN
+# measurements, and the two-island path on ordinary pushes.
+#
+# No repository secrets: the lab profile uses only the published Open5GS/
+# UERANSIM test vector (compose.sim.yaml), `secrets/` and island-init/
+# island.yaml are generated on the runner by `island-init new --lab` exactly
+# as `island.sh up` does on a fresh clone, and the sim-tools store passphrase
+# is the documented dev-only value every verify script already uses.
+#
+# Pins: every `uses:` is an exact release tag; every image is the repo's own
+# pin (compose files, "Versions" in each component README). No `latest`.
+#
+# --- Runner facts, measured (fill-in policy: CLAUDE.md "don't invent
+# --- results" -- every number here is pasted from a run's log) ---
+#   Runner (ubuntu-latest, 2026-09-17): 4 vCPU, 15988 MB RAM (free -m),
+#     87 GB free disk, Docker server 28.0.4, Compose v2.38.2.
+#   /dev/net/tun + NET_ADMIN inside a container: PERMITTED. The probe step
+#     (same image and grants as compose.sim.yaml's ue) printed
+#     "OK: TUN + NET_ADMIN work inside a container on this runner", and
+#     verify.sh's UE brought up uesimtun0 -- no privileged runner needed.
+#   core-sim, stack/core/verify.sh on the runner, pasted from the log:
+#     "ALL CHECKS PASSED"
+#     "== wall-clock: stack/core/verify.sh took 31 s (image cache hit: true) =="
+#     job wall-clock 1 min 06 s with a warm image cache (run
+#     (the workflow's run history: https://github.com/kerbgr/resccom/actions/workflows/ci.yml);
+#     1 min 45 s on the first, cold run (29 s verify.sh + ~43 s pulling and
+#     saving 1.4 GB of images: (the workflow's run history: https://github.com/kerbgr/resccom/actions/workflows/ci.yml).
+#     Container memory during the run: 16 core + sim containers, well under
+#     1 GB total; host `free -m` used went 1377 -> 1704 MB.
+#   Guard proven to bite: a throwaway commit hand-editing the rendered
+#     stack/services/config/coredns/island.zone turned `checks` red
+#     (the workflow's run history: https://github.com/kerbgr/resccom/actions/workflows/ci.yml), the
+#     island-init golden-rule test tripped first, before the render step)
+#     and was reverted in the next commit.
+#   federation-sim, manual dispatch 2026-09-17, warm image cache (2.3 GB tar):
+#     (the workflow's run history: https://github.com/kerbgr/resccom/actions/workflows/ci.yml) -- green.
+#     two-island.sh verify: "ALL CHECKS PASSED (both directions, island A's
+#       local UE undisturbed)", wall-clock 129 s.
+#     two-island.sh roam --ue oai: all seven acceptance lines YES, "OK:
+#       breakout served by B's own SMF/UPF (10.48.0.2), 0% packet loss",
+#       "OK: island A's tree is clean", wall-clock 136 s.
+#     Peak host memory used over both: 3334 MB (min available 12654 MB of
+#       15988), 54 samples at 5 s -- it fits the free public-repo runner
+#       (16 GB) with room; a 7 GB runner would also fit on these numbers.
+#     Job wall-clock 5 min 56 s. Stays manual + nightly, not required:
+#       one green dispatch is not a flakiness record, and every earlier
+#       dispatch failed on runner-portability bugs in the harness (fixed
+#       in the same change: pipx wrapper form, see two-island.sh's PYBIN).
+################################################################################
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Nightly, 03:17 UTC. Only federation-sim is gated on this event; the
+    # two required jobs run too, so a nightly is also a full regression run
+    # against whatever main is that day.
+    - cron: '17 3 * * *'
+
+# The "required" jobs are checks + core-sim. README's badge filters on
+# event=push so a red nightly federation-sim never turns the badge red for
+# the two jobs a partner lab actually reproduces.
+
+defaults:
+  run:
+    # Explicit `bash` = `bash --noprofile --norc -eo pipefail {0}`. GitHub's
+    # implicit default is only `bash -e`, with NO pipefail: found live on
+    # the first federation-sim dispatch, where `two-island.sh … | tee`
+    # FAILed and the step still went green because tee's exit code won.
+    # Every `verify.sh | tee` below depends on this line.
+    shell: bash
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.1.0
+
+      - name: Install the CLIs every script shells out to (as QUICKSTART says)
+        run: |
+          pipx install ./sim-tools ./island-init
+          resccom-sim --help >/dev/null
+          island-init --help >/dev/null
+
+      - name: pytest sim-tools
+        run: uvx --with-editable ./sim-tools pytest -q sim-tools
+
+      - name: pytest island-init
+        run: uvx --with-editable ./island-init pytest -q island-init
+
+      - name: Fresh-clone bootstrap, exactly as island.sh up does (no secrets in CI)
+        run: |
+          mkdir -p secrets
+          island-init new --lab --repo-root .
+          island-init check island-init/island.yaml --repo-root .
+          test -d secrets && ls secrets
+
+      - name: Golden rule -- rendering the lab profile leaves stack/ byte-identical
+        run: |
+          island-init render --lab --repo-root .
+          # island.sh up renders the generated instance too (render_instance_outputs);
+          # an unedited lab instance must be a no-op diff against stack/ as well.
+          island-init render --file island-init/island.yaml --repo-root .
+          dirty=$(git status --porcelain -- stack/)
+          if [ -n "$dirty" ]; then
+            echo "GOLDEN RULE BROKEN -- render changed tracked files under stack/:"
+            echo "$dirty"
+            git --no-pager diff -- stack/
+            exit 1
+          fi
+          echo "OK: stack/ is byte-identical after render"
+
+      - name: bash -n on every tracked *.sh
+        run: |
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" && echo "ok  $f"
+          done
+
+      - name: docker compose config on every compose file
+        run: |
+          cfg() { echo "== docker compose $*"; docker compose "$@" config -q; }
+          cfg -f stack/core/compose.yaml
+          cfg -f stack/core/compose.yaml -f stack/core/compose.sim.yaml
+          cfg -f stack/ran/compose.4g.yaml
+          cfg -f stack/ran/compose.5g.yaml
+          cfg -f stack/ran/compose.5g-oai.yaml
+          cfg -f stack/backhaul/compose.yaml
+          cfg -f stack/federation/compose.yaml
+          # compose.wan.yaml is an overlay two-island.sh applies on top of
+          # compose.yaml, and it requires WG_WAN_IP (set per island there).
+          WG_WAN_IP=10.200.0.2 cfg -f stack/federation/compose.yaml -f stack/federation/compose.wan.yaml
+          # The three services projects interpolate from a .env island.sh
+          # generates from these *.example.env templates on first run.
+          cfg --env-file stack/services/matrix.example.env -f stack/services/compose.yaml
+          NOMAD_DATA_DIR=/tmp/nomad-config-check \
+            cfg --env-file stack/services/nomad/nomad.example.env -f stack/services/nomad/compose.yaml
+          cfg --env-file stack/services/jitsi/jitsi.example.env -f stack/services/jitsi/compose.yaml
+
+      - name: No `latest` and no untagged image anywhere in the compose files
+        run: |
+          files=$(git ls-files 'stack/**/compose*.yaml' 'stack/compose*.yaml')
+          bad=$(grep -nE 'image:\s*\S' $files | grep -E ':latest\b|^[^:]+:[0-9]+:\s*image:\s*[^:]+$' || true)
+          if [ -n "$bad" ]; then echo "unpinned image(s):"; echo "$bad"; exit 1; fi
+          echo "OK: every image carries an explicit tag"
+
+      - name: shellcheck (errors fail, warnings allowed) on island.sh and every verify script
+        run: |
+          if ! command -v shellcheck >/dev/null; then
+            echo "shellcheck not on this runner -- skipped (TASKS.md 0.3-d: 'if it is on the runner')"
+            exit 0
+          fi
+          shellcheck --version | head -2
+          shellcheck --severity=error island.sh $(git ls-files 'stack/*verify*.sh' 'stack/*/verify*.sh') stack/federation/two-island.sh
+          echo "OK: no shellcheck errors"
+
+  core-sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Runner facts (recorded in this file's header)
+        run: |
+          echo "== cpu/mem/disk =="; nproc; free -m; df -h / | tail -1
+          echo "== docker =="; docker version --format 'server {{.Server.Version}}'; docker compose version
+          echo "== /dev/net/tun on the host =="; ls -l /dev/net/tun
+
+      - name: Restore the image cache
+        id: image-cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/resccom-images
+          key: core-sim-images-v1-${{ hashFiles('stack/core/compose.yaml', 'stack/core/compose.sim.yaml') }}
+
+      - name: Load cached images, or pull the pinned ones and save them for next time
+        run: |
+          tar=~/.cache/resccom-images/core-sim.tar
+          if [ -f "$tar" ]; then
+            echo "== cache hit: docker load =="
+            docker load -i "$tar"
+          else
+            echo "== cache miss: pulling the repo's pinned images =="
+            images=$(docker compose -f stack/core/compose.yaml -f stack/core/compose.sim.yaml config --images | sort -u)
+            echo "$images"
+            for i in $images; do docker pull -q "$i"; done
+            mkdir -p "$(dirname "$tar")"
+            docker save -o "$tar" $images
+            du -h "$tar"
+          fi
+          docker image ls --format '{{.Repository}}:{{.Tag}}  {{.Size}}' | grep -E 'open5gs|ueransim|mongo'
+
+      - name: Confirm the runner permits /dev/net/tun + NET_ADMIN inside a container
+        run: |
+          # Same image + same grants compose.sim.yaml gives the UE; if this
+          # fails, verify.sh could never bring up uesimtun0 and the header
+          # comment above must say so instead of a wall-clock.
+          docker run --rm --cap-add NET_ADMIN --device /dev/net/tun \
+            --entrypoint /bin/bash gradiant/ueransim:3.3.0 -c \
+            'ip tuntap add dev tunprobe mode tun && ip link show tunprobe && echo "OK: TUN + NET_ADMIN work inside a container on this runner"'
+
+      - name: Install resccom-sim (verify.sh loads the test subscriber through it)
+        run: pipx install ./sim-tools
+
+      - name: stack/core/verify.sh
+        run: |
+          start=$(date +%s)
+          stack/core/verify.sh 2>&1 | tee core-sim-verify.log
+          echo "== wall-clock: stack/core/verify.sh took $(( $(date +%s) - start )) s (image cache hit: ${{ steps.image-cache.outputs.cache-hit }}) =="
+          docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' | sort
+          free -m
+
+      - name: Collect compose logs
+        if: failure()
+        run: |
+          docker compose -f stack/core/compose.yaml -f stack/core/compose.sim.yaml ps -a > core-sim-ps.log 2>&1 || true
+          docker compose -f stack/core/compose.yaml -f stack/core/compose.sim.yaml logs --no-color > core-sim-compose.log 2>&1 || true
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: failure()
+        with:
+          name: core-sim-logs
+          path: core-sim-*.log
+          if-no-files-found: ignore
+
+  federation-sim:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # two-island.sh clones this checkout as island B (git clone --local).
+          fetch-depth: 0
+
+      - name: Runner facts
+        run: |
+          nproc; free -m; df -h / | tail -1
+          docker version --format 'server {{.Server.Version}}'; docker compose version
+
+      - name: Restore the image cache
+        id: image-cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/resccom-images
+          key: federation-sim-images-v1-${{ hashFiles('stack/core/compose.yaml', 'stack/core/compose.sim.yaml', 'stack/federation/compose.yaml', 'stack/ran/compose.5g-oai.yaml') }}
+
+      - name: Load cached images, or pull the pinned ones and save them for next time
+        run: |
+          tar=~/.cache/resccom-images/federation-sim.tar
+          if [ -f "$tar" ]; then
+            echo "== cache hit: docker load =="
+            docker load -i "$tar"
+          else
+            echo "== cache miss: pulling the repo's pinned images =="
+            images=$( {
+              docker compose -f stack/core/compose.yaml -f stack/core/compose.sim.yaml config --images
+              docker compose -f stack/federation/compose.yaml config --images
+              docker compose -f stack/ran/compose.5g-oai.yaml config --images
+            } | sort -u)
+            echo "$images"
+            for i in $images; do docker pull -q "$i"; done
+            mkdir -p "$(dirname "$tar")"
+            docker save -o "$tar" $images
+            du -h "$tar"
+          fi
+
+      - name: Install the CLIs + bootstrap island A exactly as island.sh up does
+        run: |
+          pipx install ./sim-tools ./island-init
+          mkdir -p secrets
+          island-init new --lab --repo-root .
+          island-init check island-init/island.yaml --repo-root .
+
+      # Peak host memory is what decides whether two islands fit a free
+      # runner. The sampler runs inside each harness step (a background
+      # process started in its own step was killed at that step's end --
+      # one sample captured on the first dispatch) and appends to one file.
+      - name: two-island.sh verify
+        run: |
+          ( while true; do free -m | awk -v t="$(date +%T)" '/Mem:/{print t, "verify used_mb=" $3, "avail_mb=" $7}'; sleep 5; done ) >> mem-samples.log 2>&1 &
+          sampler=$!
+          start=$(date +%s)
+          stack/federation/two-island.sh verify 2>&1 | tee federation-verify.log
+          echo "== wall-clock: two-island.sh verify took $(( $(date +%s) - start )) s =="
+          kill "$sampler" 2>/dev/null || true
+
+      - name: two-island.sh roam --ue oai (milestone M3 vehicle)
+        run: |
+          ( while true; do free -m | awk -v t="$(date +%T)" '/Mem:/{print t, "roam used_mb=" $3, "avail_mb=" $7}'; sleep 5; done ) >> mem-samples.log 2>&1 &
+          sampler=$!
+          start=$(date +%s)
+          stack/federation/two-island.sh roam --ue oai 2>&1 | tee federation-roam.log
+          echo "== wall-clock: two-island.sh roam --ue oai took $(( $(date +%s) - start )) s =="
+          kill "$sampler" 2>/dev/null || true
+
+      - name: Peak memory over the whole job
+        if: always()
+        run: |
+          echo "samples: $(wc -l < mem-samples.log)"
+          echo "peak used: $(sed -E 's/.*used_mb=([0-9]+).*/\1/' mem-samples.log | sort -n | tail -1) MB"
+          echo "min avail: $(sed -E 's/.*avail_mb=([0-9]+).*/\1/' mem-samples.log | sort -n | head -1) MB"
+          free -m
+
+      - name: Collect compose logs
+        if: failure()
+        run: |
+          docker ps -a > federation-ps.log 2>&1 || true
+          for f in stack/core/compose.yaml stack/federation/compose.yaml; do
+            docker compose -f "$f" logs --no-color >> federation-island-a-compose.log 2>&1 || true
+          done
+          b=stack/federation/.two-island-b
+          if [ -d "$b" ]; then
+            for f in "$b/stack/core/compose.yaml" "$b/stack/federation/compose.yaml"; do
+              COMPOSE_PROJECT_NAME=island-b docker compose -f "$f" logs --no-color >> federation-island-b-compose.log 2>&1 || true
+            done
+          fi
+          for c in island-b-oai-gnb island-b-oai-nrue island-b-roam-gnb island-b-roam-ue; do
+            docker logs "$c" > "federation-$c.log" 2>&1 || true
+          done
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: federation-sim-logs
+          path: |
+            federation-*.log
+            mem-samples.log
+          if-no-files-found: ignore

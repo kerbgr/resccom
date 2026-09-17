@@ -1,0 +1,23 @@
+################################################################################
+# ResCCOM 1.1-a — BSF (Binding Support Function)
+# Derived from upstream open5gs/open5gs configs/open5gs/bsf.yaml.in (v2.8.0).
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/bsf.log
+
+global:
+  max:
+    ue: 1024
+
+bsf:
+  sbi:
+    # 3.3-c v2d: BSF's own listener stays a plain core_net IP, matching
+    # upstream (nrf.yaml.j2's comment has the full reasoning). Its
+    # client.nrf.uri becomes the FQDN like every other NF's.
+    server:
+      - address: 10.10.0.15
+        port: 7777
+    client:
+      nrf:
+        - uri: http://nrf.5gc.mnc001.mcc001.3gppnetwork.org

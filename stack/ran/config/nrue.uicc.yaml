@@ -1,0 +1,30 @@
+# ResCCOM 1.2-a(5G-alt) — OAI nrUE over the RF simulator (rfsimulator).
+#
+# Derived from upstream OpenAirInterface's own CI reference config
+# (openairinterface5g ci-scripts/conf_files/nrue.uicc.yaml, `develop`
+# branch), with three fields swapped for this project's core/subscriber
+# instead of OAI's own CI core: imsi/key/opc (a sim-tools test vector —
+# same well-known K/OPc every rig in this repo uses, see ../README.md, but
+# a *different* IMSI than compose.4g.yaml/core's UERANSIM rig — see
+# verify-5g-oai.sh's header comment for why sharing IMSI
+# 001010000000001 with those broke the GTP-U path for real when tested),
+# pdu_sessions dnn (Open5GS's default DNN here is "internet", not OAI's
+# own "oai" — see stack/core/config/smf.yaml and
+# sim-tools/resccom_sim/sync.py DEFAULT_APN), and rfsimulator.serveraddr
+# (the gNB's address, not 127.0.0.1 — these are two separate containers,
+# not one process).
+#
+# Test values only — real subscriber keys never go in compose/config files
+# (CLAUDE.md "Never commit secrets").
+uicc0:
+  imsi: "001010000000002"
+  key: 465B5CE8B199B49FAA5F0A2EE238A6BC
+  opc: E8ED289DEBA952E4283B54E88E6183CA
+  pdu_sessions:
+    - dnn: internet
+      nssai_sst: 1
+
+thread-pool: "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1"
+
+rfsimulator:
+  - serveraddr: "10.10.0.80"

@@ -1,0 +1,48 @@
+################################################################################
+# ResCCOM 3.3-c v2f — two-island.sh only: simulated shared WAN
+#
+# Upstream: none (pure Docker networking; no image change -- same
+# "unmodified image, different invocation/wiring" discipline as
+# stack/core/compose.sim.yaml's own header).
+#
+# Usage: docker compose -f compose.yaml -f compose.wan.yaml up -d wg-overlay
+# (WAN_NET_NAME, WG_WAN_IP set by two-island.sh; a bare `island.sh up`
+# never applies this file, so single-island behaviour is untouched.)
+#
+# Attaches this island's wg-overlay container to a third network, wan_net
+# (10.200.0.0/24, created by two-island.sh itself -- external here, same
+# pattern as compose.yaml.j2's own core_net/services_net), at a static
+# address -- standing in for a real WAN link between two islands' real
+# hosts. Replaces two-island.sh's earlier host.docker.internal mapping
+# (still described, historically, in SECURITY.md's lab-profile register):
+# found live (3.3-c v2e review), reaching a peer through Docker Desktop's
+# *published host port* made its own NAT hairpin rewrite each peer's
+# authenticated packets' source address to look like the receiver's own
+# services_net gateway, and WireGuard's own endpoint-roaming (it re-learns
+# a peer's endpoint from the source address of the last packet actually
+# received from it, by design, for mobile/NAT-traversal use) then
+# overwrote the peer's *configured* endpoint with that dead address -- on
+# BOTH peers at once, since both hairpin the same way toward each other.
+# A dedicated bridge with static addresses is never NAT-hairpinned, so
+# there is no wrong source address for endpoint-roaming to ever learn.
+#
+# Nothing else changes: allowed-ips (still node_internal_base +
+# services_prefix, wg-up.sh.j2), the core_net masquerade, the SEPP-only
+# forward filter, and every peer's own overlay address/keys are exactly
+# as compose.yaml/data/wg-up.sh already render them -- only *how the
+# encrypted UDP packets between the two wg-overlay containers physically
+# get from one to the other* changes. Two-island.sh's own peered
+# island.yaml copies render each peer's `endpoint` as the peer's static
+# wan_net address (see two_island_setup.py), not host.docker.internal.
+################################################################################
+
+networks:
+  wan_net:
+    external: true
+    name: ${WAN_NET_NAME:-two-island-wan}
+
+services:
+  wg-overlay:
+    networks:
+      wan_net:
+        ipv4_address: ${WG_WAN_IP:?WG_WAN_IP must be set -- two-island.sh sets this per island}

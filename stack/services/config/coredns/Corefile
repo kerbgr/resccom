@@ -1,0 +1,66 @@
+# ResCCOM 1.3-a/1.3-e — CoreDNS authoritative for .island + WAN forwarder
+# with a captive-portal-style fallback for everything else.
+#
+# Three server blocks. `island` and `.` are independent, not one zone
+# with a fallthrough to a forwarder: `.island` must resolve the same
+# whether the island's WAN link is up or down (CLAUDE.md: never routed
+# between islands, always local), so it cannot share a failure path with
+# the forward plugin below. The third, `.:5353`, is loopback-only — see
+# its own comment.
+
+island {
+    # `file`, not `hosts`: a real zone (SOA + NS + records) is genuinely
+    # authoritative, so an unknown name under .island comes back a clean
+    # NXDOMAIN from this plugin itself — no fallthrough to the WAN
+    # forwarder below, ever. (The `hosts` plugin was tried first and
+    # rejected: with nothing after it to answer, an unmatched name came
+    # back SERVFAIL, indistinguishable from "WAN is down".)
+    file /etc/coredns/island.zone
+    log
+    errors
+}
+
+. {
+    # Everything else: best-effort forward to WAN resolvers when the
+    # island's uplink is actually up — and, per 1.3-e, resolve to
+    # portal.island (config/portal/) instead of failing when it isn't,
+    # the same "resolve-anything fallback" a commercial captive portal
+    # gives you. `127.0.0.1:5353` (below) is the last entry in the
+    # upstream list, not a separate zone/fallthrough: `forward` already
+    # tries upstreams in order and moves to the next on failure — a
+    # stock, documented capability, not something layered on top of it —
+    # so when 1.1.1.1 and 9.9.9.9 are both unreachable it lands there,
+    # and that block always answers. `max_fails 1` + a short `expire`
+    # mark a dead resolver unhealthy after one failed attempt instead of
+    # retrying it into a multi-second stall, so the fallback (or, before
+    # 1.3-e, a clean SERVFAIL) arrives fast rather than dig/an app
+    # hanging — verified: ~2s for the very first query after WAN dies,
+    # then instant once health_check has marked the real resolvers
+    # unhealthy in the background.
+    forward . 1.1.1.1 9.9.9.9 127.0.0.1:5353 {
+        policy sequential
+        max_fails 1
+        expire 10s
+        health_check 5s
+    }
+    cache 30
+    log
+    errors
+}
+
+# 1.3-e: not a public listener — 127.0.0.1 only, reachable solely as the
+# last-resort upstream in the `.` block above, never queried directly by
+# anything else. Unconditionally answers every A query with portal.island's
+# own address, regardless of what name was asked; AAAA gets a clean
+# NOERROR/no-data instead (this lab profile is IPv4-only, and answering AAAA
+# too would just make dual-stack clients try, and fail, a pointless second
+# connection). Short TTL (5s, well under `cache 30`'s cap) so a query made
+# right as WAN recovers doesn't stay pinned to the portal fallback for long.
+.:5353 {
+    template IN A . {
+        answer "{{ .Name }} 5 IN A 10.46.0.10"
+    }
+    template IN AAAA . {
+        rcode NOERROR
+    }
+}

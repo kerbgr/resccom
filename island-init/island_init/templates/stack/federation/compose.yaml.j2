@@ -1,0 +1,62 @@
+################################################################################
+# ResCCOM 3.3-b — WireGuard overlay between islands
+#
+# Upstream, unmodified image only (see CLAUDE.md "Never fork upstreams"):
+#   - linuxserver/wireguard — see README.md "Versions" for the pinned tag
+#
+# Brings up this island's own side of the federation overlay: one
+# wg-overlay container, dual-homed on core_net and services_net (both
+# `external` -- created by ../core/compose.yaml, bring stack/core up
+# first) plus its own WireGuard tunnel interface. Peers
+# (`federation.peers[]` in island.yaml) are rendered into
+# config/wg-up.sh, which the container runs directly in place of the
+# image's own entrypoint -- same pattern as stack/core/compose.sim.yaml's
+# `ue` service: an unmodified image, a different invocation, not a fork.
+#
+# The private key never enters this file or wg-up.sh (see that script's
+# own header): only the single secrets/{{ island_id }}/wireguard.key file
+# is mounted, read-only, at a fixed path -- not secrets/ wholesale (the
+# same 2.1-f mount discipline the Island Console followed).
+#
+# Rendered from island.yaml by island-init render — do not hand-edit.
+################################################################################
+
+networks:
+  core_net:
+    external: true
+    name: ${CORE_NET_NAME:-core_core_net}
+  services_net:
+    external: true
+    name: ${SERVICES_NET_NAME:-resccom_services_net}
+
+services:
+  wg-overlay:
+    image: linuxserver/wireguard:1.0.20250521
+    platform: linux/amd64
+    cap_add:
+      - NET_ADMIN
+    # Set here, not via `sysctl -w` inside wg-up.sh: a plain in-container
+    # write to /proc/sys/net/ipv4/ip_forward is permission-denied even
+    # with NET_ADMIN (found live -- the container crash-looped on it).
+    # Compose's own `sysctls:` sets it before the container's process
+    # tree starts, which Docker allows for this specific key.
+    sysctls:
+      - net.ipv4.ip_forward=1
+    entrypoint: ["/bin/sh", "/wg-up.sh"]
+    networks:
+      core_net: {}
+      # 3.3-b follow-up 2: a fixed address, not a bare/dynamic membership
+      # -- found live, stack/backhaul/unplug-test.sh's WAN_TOUCHING_IPS
+      # guard only sees fixed `ipv4_address:` entries, so a dynamic one
+      # here left this container's real WAN path invisible to that test.
+      services_net:
+        ipv4_address: {{ wg_overlay_services_ip }}
+    ports:
+      - "${WG_LISTEN_PORT:-{{ wg_listen_port }}}:{{ wg_listen_port }}/udp"
+    volumes:
+      # 2.1-g follow-up: data/, not config/ -- see render.py's own TARGETS
+      # comment on why this one target moved (island.sh up dirtied the
+      # tree on a real instance's very first render otherwise).
+      - ./data/wg-up.sh:/wg-up.sh:ro
+      - ../../secrets/{{ island_id }}/wireguard.key:/run/secrets/wireguard.key:ro
+    restart: unless-stopped

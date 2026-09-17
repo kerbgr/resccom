@@ -1,0 +1,21 @@
+################################################################################
+# ResCCOM 1.1-d — SGW-U (Serving Gateway, user plane, 4G EPC)
+# Derived from upstream open5gs/open5gs configs/open5gs/sgwu.yaml.in (v2.8.0).
+# No PFCP client config here: SGW-C (Sxa) initiates the association, and the
+# S5-U bearer to the UPF (acting as PGW-U) is plain GTP-U, no PFCP peer.
+################################################################################
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/sgwu.log
+
+global:
+  max:
+    ue: 1024
+
+sgwu:
+  pfcp:
+    server:
+      - address: 10.10.0.32
+  gtpu:
+    server:
+      - address: 10.10.0.32
